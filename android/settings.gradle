@@ -1,0 +1,6 @@
+pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
+dependencyResolutionManagement { repositories { google(); mavenCentral() } }
+rootProject.name = 'WebXRSamples'
+include ':app', ':BabylonNative'
+def checkout = System.getenv('BABYLON_NATIVE_DIR') ?: new File(settingsDir, '../third_party/BabylonNative')
+project(':BabylonNative').projectDir = new File(checkout, 'Apps/Playground/Android/BabylonNative')
