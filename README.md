@@ -7,13 +7,11 @@ It uses the upstream shader, projection and render loop. The native host supplie
 the named canvas and entry action; the browser page retains its Enter VR button.
 There is no fallback to WebGL or OpenGL ES.
 
-**Runtime qualification:** the standalone repository's initial BabylonNative
-gitlink, `687c98cf24a9678c83717ca75d6b90753668d552`, is the public
-before-fix control. It does **not** contain the Quest projection-array and
-depth fixes. Device results below require the local corrected runtime via
-`BABYLON_NATIVE_DIR`. Do not publish this control gitlink as a working
-release: first qualify the same tests from a clean checkout of a reachable
-fixed runtime revision, with no local source overrides.
+The BabylonNative submodule pins
+[`32466c01`](https://github.com/rebeckerspecialties/BabylonNative/commit/32466c014d84249804cffea500ed3c773b9e0911).
+It contains the stereo projection-array and Adreno depth-clear fixes.
+The app uses two-pass WebGPU by default; the pin also includes a separate
+opt-in single-pass Babylon material pixel fixture.
 
 Pin `immersive-web/webxr-samples` at `6d548461574f733e2d0578deb32b6f0387735dab`.
 The generator checks the input SHA-256 and preserves the copyright notice.
@@ -41,10 +39,16 @@ qualified checkouts (or use `third_party/BabylonNative` and `third_party/webxr-s
 Use the embedding's normal Android Vulkan/OpenXR toolchain and V8 configuration:
 
 ```sh
-"$BABYLON_NATIVE_DIR/Apps/Playground/Android/gradlew" -p android :app:assembleDebug -PARM64Only -PjsEngine=V8
+git submodule update --init --recursive
+npm ci
+third_party/BabylonNative/Apps/Playground/Android/gradlew -p android :app:assembleDebug -PARM64Only -PjsEngine=V8
 adb install -r android/app/build/outputs/apk/debug/app-debug.apk
 adb shell am start -a android.intent.action.MAIN -c com.oculus.intent.category.VR -n com.rebeckerspecialties.xrsamples/.SampleActivity
 ```
+
+With the headset awake and tracking, run `python3 android/test-roundtrip.py SERIAL`
+to check three independent cold starts. Each process must show the menu, pass
+32 stereo frames and show the menu again. This uses normal application logs only.
 
 The sample package coexists with the playback app. In a desk fixture with a
 tracked headset facing away from the original local origin, pass
@@ -54,10 +58,16 @@ pose. This does not change the mesh, shaders or the WebGPU renderer.
 For a local UI build with authorized access to the Factotum source, run
 `node buildLauncher.cjs "$FACTOTUM_WORKSPACE" "$BABYLON_NODE_MODULES" "$OUTPUT"`
 and set `WEBXR_LAUNCHER_DIR="$OUTPUT"` at Android build time. Use Babylon
-9.37.1 core/gui and the existing Factotum workspace dependencies. Pass
-`--ez launcher true` to launch the hand selector and modal, or visit
+9.37.1 core/gui/loaders and the existing Factotum workspace dependencies. A normal
+headset launch opens the selector. Tracked controllers use the packaged, attributed
+Immersive Web grip models. Choose Next to browse, Run to enter the selected fixture
+and press a trigger in the fixture to return. Guided fixtures draw the reported grip
+and target-ray poses in both eyes (blue left, amber right); untracked poses disappear.
+The unmodified reference page remains available without these markers. Use `--ez launcher false` only to launch
+the raw reference without the selector. The public version builds with npm dependencies
+alone. For the browser, copy the built launcher and HTML into the generated site and visit
 `launcher.html` in the generated browser site. A native desk run can also pass
-`--ez checkHandoff true` to exercise close, reopen, selection and the transition
+`--ez checkHandoff true` to exercise selection and the transition
 to the raw sample after 120 scene frames. Browser runs require real activation.
 Do not distribute the optional generated UI bundle, playback data, or system
 captures that show the physical room.

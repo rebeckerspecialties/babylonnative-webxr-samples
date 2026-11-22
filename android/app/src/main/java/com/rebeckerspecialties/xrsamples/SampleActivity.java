@@ -19,7 +19,7 @@ public final class SampleActivity extends Activity {
         if (getIntent().getBooleanExtra("alignOrigin", false)) {
             BabylonNative.runtimeLoadScript(runtime, "app:///Scripts/offset.js");
         }
-        boolean menu = getIntent().getBooleanExtra("launcher", false);
+        boolean menu = getIntent().getBooleanExtra("launcher", true);
         if (menu) BabylonNative.runtimeLoadScript(runtime, "app:///Scripts/menu-entry.js");
         if (menu && getIntent().getBooleanExtra("checkHandoff", false)) {
             BabylonNative.runtimeLoadScript(runtime, "app:///Scripts/menu-check.js");

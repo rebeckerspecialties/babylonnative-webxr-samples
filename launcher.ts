@@ -1,14 +1,11 @@
-import { BehaviorSubject } from "rxjs";
-import { Modal } from "factotum-ui/Modal";
-import { createNodeHandContainer, createUiFollowStack } from "factotum-ui/createUiContainer";
-import { OrnamentButton } from "factotum-ui/HandMenu/OrnamentButton";
+import { showMenu } from "sample-menu";
 import { WebGPUEngine } from "@babylonjs/core/Engines/webgpuEngine";
 import { Scene } from "@babylonjs/core/scene";
 import { FreeCamera } from "@babylonjs/core/Cameras/freeCamera";
-import { Quaternion, Vector3 } from "@babylonjs/core/Maths/math.vector";
-import { Color3 } from "@babylonjs/core/Maths/math.color";
-import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
-import { CreateBox } from "@babylonjs/core/Meshes/Builders/boxBuilder";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
+import { ImportMeshAsync } from "@babylonjs/core/Loading/sceneLoader";
+import "@babylonjs/loaders/glTF";
 import { WebXRDefaultExperience } from "@babylonjs/core/XR/webXRDefaultExperience";
 import "@babylonjs/core/XR/features/WebXRLayers";
 import "@babylonjs/core/XR/features/WebXRControllerPointerSelection";
@@ -20,64 +17,66 @@ async function prepareLauncher() {
     const engine = new WebGPUEngine(document.getElementById("webgpu_canvas"), { xrCompatible: true, audioEngine: false });
     await engine.initAsync();
     const scene = new Scene(engine);
+    new HemisphericLight("controller light", Vector3.Up(), scene);
     scene.activeCamera = new FreeCamera("viewer", Vector3.Zero(), scene);
     const xr = await WebXRDefaultExperience.CreateAsync(scene, {
         disableDefaultUI: true, disableTeleportation: true,
-        inputOptions: { doNotLoadControllerMesh: true },
+        inputOptions: { doNotLoadControllerMeshes: true, disableOnlineControllerRepository: true },
     });
     xr.baseExperience.featuresManager.enableFeature("xr-layers", "latest");
+    async function attachController(controller) {
+        const source = controller.inputSource;
+        if (!controller.grip || source.hand || source.targetRayMode !== "tracked-pointer") return;
+        const name = source.handedness === "left" ? "controller-left.gltf" : "controller.gltf";
+        const result = await ImportMeshAsync((native ? "app:///Scripts/controller/" : "./controller/") + name, scene, { meshNames: "mesh340565441" });
+        if (scene.isDisposed || controller.grip.isDisposed()) {
+            for (const mesh of result.meshes) mesh.dispose();
+            return;
+        }
+        for (const mesh of result.meshes) {
+            if (!mesh.parent) mesh.parent = controller.grip;
+            mesh.isPickable = false;
+        }
+        if (!result.meshes.some(mesh => mesh.getTotalVertices() > 0)) throw Error("No controller geometry for " + source.handedness);
+        console.info("XR selector grip model", source.handedness, result.meshes.length);
+    }
+    xr.input.onControllerAddedObservable.add(c => attachController(c).catch(report));
+    for (const c of xr.input.controllers) attachController(c).catch(report);
     const start = async () => {
         await xr.baseExperience.enterXRAsync("immersive-vr", "local", xr.renderTarget, { requiredFeatures: ["webgpu"] });
         engine.runRenderLoop(() => scene.render());
-        const stack = createUiFollowStack({});
-        const mount = createNodeHandContainer(xr, "left");
-        const buttonMesh = CreateBox("sample selector", { size: 0.08 }, scene);
-        const material = new StandardMaterial("selector", scene);
-        material.emissiveColor = new Color3(0.08, 0.55, 0.85);
-        buttonMesh.material = material;
-        const backingMesh = CreateBox("selector backing", { size: 0.09, depth: 0.04 }, scene);
-        let modal, busy = false;
-        const close = () => { modal?.complete(); modal = undefined; };
+        let busy = false;
+        const titles = ["Stereo projection", "Viewer-relative projection"];
+        let page = native ? (globalThis.webxrSamplePage || 0) : Number(new URL(location.href).searchParams.get("page") === "1");
+        const next = () => { page = (page + 1) % titles.length; };
         const run = async () => {
             if (busy) return;
             busy = true;
-            close();
-            button.complete();
+            menu.dispose();
             await xr.baseExperience.exitXRAsync();
             engine.stopRenderLoop();
-            stack.dispose();
-            mount.dispose();
             xr.dispose();
             scene.dispose();
             engine.dispose();
-            if (native) await globalThis.runWebXRSample();
-            else location.assign("webgpu/checks.html");
+            if (native) {
+                globalThis.webxrSampleAlignOrigin = page === 1;
+                globalThis.webxrSamplePage = (page + 1) % titles.length;
+                await globalThis.runWebXRSample(() => prepareLauncher().catch(report));
+            }
+            else location.assign("webgpu/checks.html?launcher=1&page=" + page);
         };
-        const select = () => {
-            if (modal || busy) return;
-            modal = new BehaviorSubject({
-                headerText: "WebXR samples", bodyText: "Barebones WebGPU stereo projection",
-                leftButtonText: "Run sample", onLeftButtonClick: () => run().catch(report),
-                rightButtonText: "Close", onRightButtonClick: close,
-            });
-            Modal(stack.node, modal, { nButtons: 2 });
-        };
-        const button = new BehaviorSubject({
-            scene, enabled: true, name: "sample-selector", buttonMesh, backingMesh,
-            onClick: select, transformConfig: { position: Vector3.Zero(), scaling: Vector3.One().scale(0.08), rotation: Quaternion.Identity() },
-        });
-        OrnamentButton(mount, button, {});
-        select();
-        console.info("XR launcher ready: hand selector and sample modal");
+        const menu = showMenu(scene, xr, () => (page + 1) + " / " + titles.length + "   " + titles[page], () => run().catch(report), next);
+        console.info("XR launcher ready", titles[page]);
         // Desk qualification drives the very same callbacks as the controls, after rendering.
         if (globalThis.webxrCheckMenuHandoff === true) {
             let count = 0;
             const handle = scene.onAfterRenderObservable.add(() => {
                 if (++count !== 120) return;
                 scene.onAfterRenderObservable.remove(handle);
-                close();
-                select();
-                modal.value.onLeftButtonClick();
+                globalThis.webxrCheckMenuHandoff = false;
+                globalThis.webxrCheckMenuReturn = true;
+                next();
+                run().catch(report);
             });
         }
     };

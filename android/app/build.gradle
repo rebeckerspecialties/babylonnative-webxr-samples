@@ -2,25 +2,34 @@ plugins { id 'com.android.application' }
 def source = rootProject.file('..')
 def upstream = file(System.getenv('WEBXR_SAMPLES_DIR') ?: new File(source, 'third_party/webxr-samples'))
 def scripts = layout.buildDirectory.dir('generated/sample')
+def customMenu = System.getenv('WEBXR_LAUNCHER_DIR')
+def launcher = customMenu ? file(customMenu) : new File(source, 'build/launcher')
+def buildMenu = tasks.register('buildPublicMenu', Exec) {
+    onlyIf { !customMenu }
+    workingDir source
+    inputs.files(new File(source, 'launcher.ts'), new File(source, 'launcher.html'), new File(source, 'publicMenu.ts'), new File(source, 'package-lock.json'), new File(source, 'buildLauncher.cjs'))
+    outputs.file(new File(launcher, 'launcher.js'))
+    commandLine 'npm', 'run', 'build:menu'
+}
 def host = new File(project(':BabylonNative').projectDir, '../../Scripts/babylon_lite_bootstrap.js')
 def generate = tasks.register('generateSample', Exec) {
-    inputs.files(new File(source, 'prepare.py'), new File(source, 'checks.js'), new File(source, 'flatControl.js'), new File(upstream, 'webgpu/vr-barebones.html'))
+    inputs.files(new File(source, 'prepare.py'), new File(source, 'checks.js'), new File(source, 'trackedInput.js'), new File(source, 'flatControl.js'), new File(upstream, 'webgpu/vr-barebones.html'))
     inputs.files(new File(upstream, 'css/common.css'), new File(upstream, 'favicon-32x32.png'), new File(upstream, 'favicon-96x96.png'))
+    inputs.dir(new File(upstream, 'media/gltf/controller'))
     outputs.dir(layout.buildDirectory.dir('generated/entries'))
     commandLine 'python3', new File(source, 'prepare.py'), upstream, layout.buildDirectory.dir('generated/entries').get().asFile
 }
 def stage = tasks.register('stageSample', Sync) {
-    dependsOn generate
+    dependsOn generate, buildMenu
     into scripts
     into('Scripts') {
         from(layout.buildDirectory.dir('generated/entries')) { include 'main.js', 'offset.js', 'menu-entry.js', 'menu-check.js' }
-        if (System.getenv('WEBXR_LAUNCHER_DIR')) {
-            from(new File(System.getenv('WEBXR_LAUNCHER_DIR'), 'launcher.js'))
-        }
+        from(new File(launcher, 'launcher.js'))
         from(host)
+        from(layout.buildDirectory.dir('generated/entries/controller')) { into 'controller' }
     }
     doLast {
-        for (name in ['main.js', 'babylon_lite_bootstrap.js']) {
+        for (name in ['launcher.js', 'main.js', 'babylon_lite_bootstrap.js']) {
             if (!new File(destinationDir, "Scripts/$name").isFile()) throw new GradleException("Missing $name")
         }
     }

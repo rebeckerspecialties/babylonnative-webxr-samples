@@ -1,5 +1,11 @@
 // Supplement the upstream renderer. Never substitute another API when WebGPU is unavailable.
 const drawUpstreamFrame = onXRFrame;
+const drawTriangle = drawScene;
+let inputMarkers = null;
+drawScene = function (pass, viewIndex = 0) {
+    drawTriangle(pass, viewIndex);
+    inputMarkers?.draw(pass, gpuBindGroups[viewIndex]);
+};
 let checkedFrames = 0;
 let distinctPoses = false;
 let originAligned = false;
@@ -12,6 +18,16 @@ onXRFrame = function (time, frame) {
             xrRefSpace = xrRefSpace.getOffsetReferenceSpace(new XRRigidTransform(copyPoint(position), copyPoint(orientation)));
             originAligned = true;
         }
+    }
+    if (globalThis.webxrGuidedInput === true) {
+        if (!inputMarkers) {
+            inputMarkers = makeInputMarkers(gpuDevice, gpuBindGroupLayout, colorFormat, depthStencilFormat);
+            frame.session.addEventListener("end", () => {
+                inputMarkers.dispose();
+                inputMarkers = null;
+            }, { once: true });
+        }
+        inputMarkers.update(frame, xrRefSpace);
     }
     drawUpstreamFrame(time, frame);
     if (checkedFrames >= 32) return;
@@ -63,6 +79,11 @@ onXRFrame = function (time, frame) {
         if (++checkedFrames === 32) {
             if (!distinctPoses) throw Error("Eye transforms are identical");
             console.info("XR sample PASS: 32 stereo projection frames, depth24plus, inverse reference space");
+            if (globalThis.webxrCheckMenuReturn === true) {
+                globalThis.webxrCheckMenuReturn = false;
+                const session = frame.session;
+                setTimeout(() => session.end().catch(e => console.error("XR sample return FAIL", String(e))), 0);
+            }
         }
     } catch (e) {
         checkedFrames = 32;
