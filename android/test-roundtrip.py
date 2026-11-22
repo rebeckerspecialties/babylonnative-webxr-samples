@@ -10,16 +10,19 @@ import time
 
 def verify(log):
     stage = 0
+    hands = set()
     for line in log.splitlines():
         if any(s in line for s in ("XR sample FAIL", "XR launcher FAIL", "Uncaptured GPU", "Fatal signal", "FATAL EXCEPTION")):
             raise RuntimeError(line)
+        if "XR grip asset PASS " in line:
+            hands.add(line.rsplit(" ", 1)[-1])
         if stage == 0 and "XR launcher ready" in line:
             stage = 1
         elif stage == 1 and "XR sample PASS: 32 stereo projection frames" in line:
             stage = 2
         elif stage == 2 and "XR launcher ready" in line:
             stage = 3
-    return stage == 3
+    return stage == 3 and hands == {"left", "right"}
 
 
 def run(serial, count):

@@ -24,21 +24,25 @@ async function prepareLauncher() {
         inputOptions: { doNotLoadControllerMeshes: true, disableOnlineControllerRepository: true },
     });
     xr.baseExperience.featuresManager.enableFeature("xr-layers", "latest");
+    async function loadGrip(handedness: string) {
+        const name = handedness === "left" ? "controller-left.gltf" : "controller.gltf";
+        const result = await ImportMeshAsync((native ? "app:///Scripts/controller/" : "./controller/") + name, scene, { meshNames: "mesh340565441" });
+        if (!result.meshes.some(mesh => mesh.getTotalVertices() > 0)) throw Error("No controller geometry for " + handedness);
+        return result.meshes;
+    }
     async function attachController(controller) {
         const source = controller.inputSource;
         if (!controller.grip || source.hand || source.targetRayMode !== "tracked-pointer") return;
-        const name = source.handedness === "left" ? "controller-left.gltf" : "controller.gltf";
-        const result = await ImportMeshAsync((native ? "app:///Scripts/controller/" : "./controller/") + name, scene, { meshNames: "mesh340565441" });
+        const meshes = await loadGrip(source.handedness);
         if (scene.isDisposed || controller.grip.isDisposed()) {
-            for (const mesh of result.meshes) mesh.dispose();
+            for (const mesh of meshes) mesh.dispose(false, true);
             return;
         }
-        for (const mesh of result.meshes) {
+        for (const mesh of meshes) {
             if (!mesh.parent) mesh.parent = controller.grip;
             mesh.isPickable = false;
         }
-        if (!result.meshes.some(mesh => mesh.getTotalVertices() > 0)) throw Error("No controller geometry for " + source.handedness);
-        console.info("XR selector grip model", source.handedness, result.meshes.length);
+        console.info("XR selector grip model", source.handedness, meshes.length);
     }
     xr.input.onControllerAddedObservable.add(c => attachController(c).catch(report));
     for (const c of xr.input.controllers) attachController(c).catch(report);
@@ -69,6 +73,11 @@ async function prepareLauncher() {
         console.info("XR launcher ready", titles[page]);
         // Desk qualification drives the very same callbacks as the controls, after rendering.
         if (globalThis.webxrCheckMenuHandoff === true) {
+            for (const hand of ["left", "right"]) {
+                const meshes = await loadGrip(hand);
+                for (const mesh of meshes) mesh.dispose(false, true);
+                console.info("XR grip asset PASS", hand);
+            }
             let count = 0;
             const handle = scene.onAfterRenderObservable.add(() => {
                 if (++count !== 120) return;
