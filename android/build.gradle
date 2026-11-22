@@ -1,0 +1,12 @@
+plugins {
+    id 'com.android.application' version '9.0.1' apply false
+    id 'com.android.library' version '9.0.1' apply false
+}
+project(':BabylonNative').plugins.withId('com.android.library') {
+    project(':BabylonNative').androidComponents.finalizeDsl { dsl ->
+        def cmake = dsl.defaultConfig.externalNativeBuild.cmake
+        cmake.arguments.removeAll { it.startsWith('-DBABYLON_NATIVE_BUILD_APPS=') }
+        cmake.arguments.add('-DBABYLON_NATIVE_BUILD_APPS=OFF')
+        cmake.targets.add('BabylonNativeEmbedding')
+    }
+}

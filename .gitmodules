@@ -1,0 +1,6 @@
+[submodule "third_party/BabylonNative"]
+	path = third_party/BabylonNative
+	url = https://github.com/rebeckerspecialties/BabylonNative.git
+[submodule "third_party/webxr-samples"]
+	path = third_party/webxr-samples
+	url = https://github.com/immersive-web/webxr-samples.git
