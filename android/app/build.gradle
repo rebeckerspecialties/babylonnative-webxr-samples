@@ -13,7 +13,7 @@ def buildMenu = tasks.register('buildPublicMenu', Exec) {
 }
 def host = new File(project(':BabylonNative').projectDir, '../../Scripts/babylon_lite_bootstrap.js')
 def generate = tasks.register('generateSample', Exec) {
-    inputs.files(new File(source, 'prepare.py'), new File(source, 'checks.js'), new File(source, 'trackedInput.js'), new File(source, 'flatControl.js'), new File(upstream, 'webgpu/vr-barebones.html'))
+    inputs.files(new File(source, 'prepare.py'), new File(source, 'checks.js'), new File(source, 'projectionReplacement.js'), new File(source, 'trackedInput.js'), new File(source, 'flatControl.js'), new File(upstream, 'webgpu/vr-barebones.html'))
     inputs.files(new File(upstream, 'css/common.css'), new File(upstream, 'favicon-32x32.png'), new File(upstream, 'favicon-96x96.png'))
     inputs.dir(new File(upstream, 'media/gltf/controller'))
     outputs.dir(layout.buildDirectory.dir('generated/entries'))

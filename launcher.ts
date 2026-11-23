@@ -50,8 +50,9 @@ async function prepareLauncher() {
         await xr.baseExperience.enterXRAsync("immersive-vr", "local", xr.renderTarget, { requiredFeatures: ["webgpu"] });
         engine.runRenderLoop(() => scene.render());
         let busy = false;
-        const titles = ["Stereo projection", "Viewer-relative projection"];
-        let page = native ? (globalThis.webxrSamplePage || 0) : Number(new URL(location.href).searchParams.get("page") === "1");
+        const titles = ["Stereo projection", "Viewer-relative projection", "Projection layer replacement"];
+        const initialPage = Number(native ? globalThis.webxrSamplePage : new URL(location.href).searchParams.get("page"));
+        let page = Number.isInteger(initialPage) && initialPage >= 0 && initialPage < titles.length ? initialPage : 0;
         const next = () => { page = (page + 1) % titles.length; };
         const run = async () => {
             if (busy) return;
@@ -64,6 +65,7 @@ async function prepareLauncher() {
             engine.dispose();
             if (native) {
                 globalThis.webxrSampleAlignOrigin = page === 1;
+                globalThis.webxrSampleReplaceProjection = page === 2;
                 globalThis.webxrSamplePage = (page + 1) % titles.length;
                 await globalThis.runWebXRSample(() => prepareLauncher().catch(report));
             }

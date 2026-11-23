@@ -1,0 +1,10 @@
+{
+  "name": "webxr-sample-browser-reference",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "iwer": "2.8.0",
+    "puppeteer-core": "25.1.0",
+    "webxr-layers-polyfill": "1.1.0"
+  }
+}

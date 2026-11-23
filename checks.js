@@ -9,7 +9,12 @@ drawScene = function (pass, viewIndex = 0) {
 let checkedFrames = 0;
 let distinctPoses = false;
 let originAligned = false;
+let rotation;
 onXRFrame = function (time, frame) {
+    if (globalThis.webxrSampleReplaceProjection) {
+        rotation ??= projectionReplacement(xrGpuBinding, projectionLayer, {colorFormat, depthStencilFormat});
+        projectionLayer = rotation.begin(frame.session);
+    }
     if (globalThis.webxrSampleAlignOrigin === true && !originAligned) {
         const first = frame.getViewerPose(xrRefSpace);
         if (first) {
@@ -30,7 +35,9 @@ onXRFrame = function (time, frame) {
         inputMarkers.update(frame, xrRefSpace);
     }
     drawUpstreamFrame(time, frame);
-    if (checkedFrames >= 32) return;
+    rotation?.end(frame.session);
+    const targetFrames = rotation ? 64 : 32;
+    if (checkedFrames >= targetFrames) return;
     try {
         const pose = frame.getViewerPose(xrRefSpace);
         if (!pose) return;
@@ -76,9 +83,10 @@ onXRFrame = function (time, frame) {
         const local = frame.getViewerPose(offset);
         if (!local || !local.transform.matrix.every((n, i) => Math.abs(n - (i % 5 === 0 ? 1 : 0)) < 0.0002))
             throw Error("Inverse reference space did not give an identity viewer transform");
-        if (++checkedFrames === 32) {
+        if (++checkedFrames === targetFrames) {
             if (!distinctPoses) throw Error("Eye transforms are identical");
-            console.info("XR sample PASS: 32 stereo projection frames, depth24plus, inverse reference space");
+            if (rotation && !rotation.complete) throw Error("Both layer handoffs must render");
+            console.info("XR sample PASS: " + targetFrames + " stereo projection frames, depth24plus, inverse reference space" + (rotation ? ", two layer handoffs" : ""));
             if (globalThis.webxrCheckMenuReturn === true) {
                 globalThis.webxrCheckMenuReturn = false;
                 const session = frame.session;
@@ -86,7 +94,7 @@ onXRFrame = function (time, frame) {
             }
         }
     } catch (e) {
-        checkedFrames = 32;
+        checkedFrames = targetFrames;
         console.error("XR sample FAIL", String(e), e.stack);
     }
 };

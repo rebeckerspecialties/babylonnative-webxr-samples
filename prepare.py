@@ -39,7 +39,8 @@ def generate(checkout, output):
     if module.count(start) != 1:
         raise ValueError("Unexpected upstream entry point")
     body, end = module.split(start)
-    checks = (Path(__file__).with_name("trackedInput.js").read_text() + "\n" +
+    checks = (Path(__file__).with_name("projectionReplacement.js").read_text() + "\n" +
+              Path(__file__).with_name("trackedInput.js").read_text() + "\n" +
               Path(__file__).with_name("checks.js").read_text())
     notice = page.split("<!--", 1)[1].split("-->", 1)[0]
     pages = output / "webgpu"
@@ -55,14 +56,15 @@ def generate(checkout, output):
 const params = new URL(location.href).searchParams;
 if (params.get("launcher") === "1") {
     globalThis.webxrGuidedInput = true;
-    const index = params.get("page") === "1" ? 1 : 0;
+    const index = ["0", "1", "2"].indexOf(params.get("page"));
     globalThis.webxrSampleAlignOrigin = index === 1;
+    globalThis.webxrSampleReplaceProjection = index === 2;
     const begin = onSessionStarted;
     onSessionStarted = async session => {
         session.addEventListener("select", () => session.end(), { once: true });
         await begin(session);
     };
-    onSessionEnded = () => location.assign("../launcher.html?page=" + (1 - index));
+    onSessionEnded = () => location.assign("../launcher.html?page=" + ((Math.max(0, index) + 1) % 3));
 }
 """
     (pages / "checks.html").write_text(page.replace(module, body + checks + browser_menu + "\ninitXR();\n" + end))

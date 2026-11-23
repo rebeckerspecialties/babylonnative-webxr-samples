@@ -8,8 +8,8 @@ the named canvas and entry action; the browser page retains its Enter VR button.
 There is no fallback to WebGL or OpenGL ES.
 
 The BabylonNative submodule pins
-[`32466c01`](https://github.com/rebeckerspecialties/BabylonNative/commit/32466c014d84249804cffea500ed3c773b9e0911).
-It contains the stereo projection-array and Adreno depth-clear fixes.
+[`c542cf26`](https://github.com/rebeckerspecialties/BabylonNative/commit/c542cf26987638dde6f2c4ae273cb37a562b0d0c).
+It contains the stereo projection-array, raw controller pose, canvas ink-bound and Adreno depth-clear fixes.
 The app uses two-pass WebGPU by default; the pin also includes a separate
 opt-in single-pass Babylon material pixel fixture.
 
@@ -71,3 +71,25 @@ alone. For the browser, copy the built launcher and HTML into the generated site
 to the raw sample after 120 scene frames. Browser runs require real activation.
 Do not distribute the optional generated UI bundle, playback data, or system
 captures that show the physical room.
+
+The third guided fixture alternates full- and three-quarter-scale projection layers.
+It checks both transitions across frame boundaries and 64 frames of stereo subimages.
+Run `node --test trackedInput.test.cjs projectionReplacement.test.cjs` to exercise
+the control logic without a headset.
+
+### Browser layer reference
+
+From this checkout:
+
+```sh
+npm ci --prefix tools/reference
+CHROME="/path/to/chrome" node tools/reference/capture.mjs third_party/webxr-samples build/reference
+```
+
+This opens the 13 original layers pages in Chromium with IWER and the WebXR
+Layers polyfill. It saves screenshots, immersive callback counts and page errors.
+These are WebGL visual references only; the Android app remains WebGPU-only.
+On Chrome 155 with IWER 2.8, ten pages delivered at least 30 immersive callbacks.
+The two multiview pages and spacewarp page did not. Inspect video pixels independently
+of frame counts. Compare both images of the timed destruction test. Composition layers
+other than projection are not yet supported by the pinned native runtime.
