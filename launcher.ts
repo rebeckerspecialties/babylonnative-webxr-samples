@@ -1,6 +1,6 @@
 import { showMenu } from "sample-menu";
 import { attachGripModel } from "./gripModel.mjs";
-import { bounded, exerciseLayer, layerCases } from "./composition.mjs";
+import { bounded, exerciseLayer, inspectionSpace, layerCases } from "./composition.mjs";
 import { projectionPixels } from "./projectionPixels.mjs";
 import { warpFrames } from "./spaceWarp.mjs";
 import { densityPixels } from "./densityPixels.mjs";
@@ -140,16 +140,19 @@ async function prepareLauncher() {
                             } finally {await raw.end();}
                         } finally {await xr.baseExperience.enterXRAsync("immersive-vr","local",xr.renderTarget,{requiredFeatures:["webgpu","layers"]});}
                     } else {
-                        result = await exerciseLayer(v.entry,manager.session,engine._device,manager.referenceSpace,
-                            native ? "app:///Scripts/layer-images/" : "./layer-images/", v.foveation, v.moving);
+                        const space=await inspectionSpace(manager.session,manager.referenceSpace);
+                        menu.setVisible?.(false);
+                        result = await exerciseLayer(v.entry,manager.session,engine._device,space,
+                            native ? "app:///Scripts/layer-images/" : "./layer-images/", v.foveation, v.moving,16000);
                     }
-                    status = "Submitted: " + result.frames + " frames";
+                    status = result.verifiedLayerImages ? "Layer image pixels verified" : "Submitted: " + result.frames + " frames";
                     console.info("XR layer submitted",JSON.stringify(result));
                 } catch (e) {
                     status = e.message;
                     console.error("XR layer FAIL",titles[page],e.message);
                 } finally {
                     busy = false;
+                    menu.setVisible?.(true);
                     menu.refresh?.();
                 }
                 return;
@@ -170,6 +173,19 @@ async function prepareLauncher() {
         };
         const menu = showMenu(scene, xr, () => (page + 1) + " / " + titles.length + "   " + titles[page]+(status ? "\n"+status : ""), () => run().catch(report), next);
         console.info("XR launcher ready", titles[page]);
+        if (globalThis.webxrInspectImage === true) {
+            globalThis.webxrInspectImage=false;
+            const manager=xr.baseExperience.sessionManager;
+            await bounded(new Promise(resolve=>{
+                const ob=manager.onXRFrameObservable.add(frame=>{
+                    if(!frame.getViewerPose(manager.referenceSpace)) return;
+                    manager.onXRFrameObservable.remove(ob); resolve(true);
+                });
+            }),5000,"No tracked menu frame");
+            await run();
+            if (status !== "Layer image pixels verified") throw Error("Menu image inspection failed: "+status);
+            console.info("XR image inspection returned", titles[page]);
+        }
         if (globalThis.webxrProjectionRoundTrip === true) {
             const manager=xr.baseExperience.sessionManager;
             const original=manager.session;

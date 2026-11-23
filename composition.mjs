@@ -63,7 +63,45 @@ function loadImage(url) {
         image.src = url;
     }), 15000, "Timed out loading " + url);
 }
-export async function exerciseLayer(entry, session, device, space, baseURL, foveation, moving = false) {
+// Capture once, not every frame: the sample starts in view and remains world-fixed.
+export function inspectionSpace(session, base) {
+    return new Promise((resolve,reject)=>{
+        let id;
+        const timer=setTimeout(()=>{session.cancelAnimationFrame?.(id);reject(Error("No tracked viewer for layer placement"));},5000);
+        function place(_,frame) {
+            try {
+                const pose=frame.getViewerPose(base);
+                if (!pose) {id=session.requestAnimationFrame(place); return;}
+                clearTimeout(timer);
+                resolve(base.getOffsetReferenceSpace(pose.transform));
+            } catch(e) {clearTimeout(timer);reject(e);}
+        }
+        id=session.requestAnimationFrame(place);
+    });
+}
+// Known opaque texels in the upstream rect-mono.png. Comparing channel ordering
+// and contrast allows both linear and sRGB storage without accepting a blank image.
+export function checkRectPixels(bytes,format) {
+    const r=format.startsWith("bgra")?2:0, b=2-r;
+    if(bytes.length!==16 || [3,7,11,15].some(i=>bytes[i]<245) ||
+       !(bytes[4+r]>bytes[4+b]+12 && bytes[4+r]>bytes[r]+12 &&
+         bytes[13]>bytes[1]+10 && bytes[9]>bytes[1]+3))
+        throw Error("Uploaded compositor layer does not contain rect-mono.png texels: "+Array.from(bytes));
+}
+async function inspectRect(device,sub) {
+    const points=[[50,50],[400,750],[810,540],[1450,890]];
+    const read=device.createBuffer({size:16,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});
+    try {
+        const enc=device.createCommandEncoder(), slice=sub.getViewDescriptor().baseArrayLayer??0, format=sub.colorTexture.format;
+        points.forEach(([x,y],i)=>enc.copyTextureToBuffer({texture:sub.colorTexture,
+            origin:[sub.viewport.x+x,sub.viewport.y+y,slice]}, {buffer:read,offset:i*4},[1,1]));
+        device.queue.submit([enc.finish()]);
+        await bounded(read.mapAsync(GPUMapMode.READ),5000,"Layer image readback timed out");
+        try {checkRectPixels(new Uint8Array(read.getMappedRange()),format);}
+        finally {read.unmap();}
+    } finally {read.destroy();}
+}
+export async function exerciseLayer(entry, session, device, space, baseURL, foveation, moving = false, duration=8000) {
     const [title,kinds,operation] = entry;
     const original = Array.from(session.renderState.layers);
     const projection = original.find(layer => layer instanceof XRProjectionLayer);
@@ -101,7 +139,8 @@ export async function exerciseLayer(entry, session, device, space, baseURL, fove
             const width = useVideo ? image.videoWidth : kind === "Cube" ? height : image.width;
             if (!width || !height) throw Error("Source has no decoded dimensions");
             if (!media) Object.assign(options,{colorFormat:gpu.getPreferredColorFormat(),viewPixelWidth:width,viewPixelHeight:height,
-                isStatic:!useVideo,textureUsage:GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_DST});
+                isStatic:!useVideo,textureUsage:GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_DST |
+                    (!useVideo && assets[kind]==="rect-mono.png" ? GPUTextureUsage.COPY_SRC : 0)});
             const layer = media ? factory["create"+kind+"Layer"](video,options) : factory["create"+kind+"Layer"](options);
             owned.push({layer,image,width,height,kind});
         }
@@ -124,11 +163,14 @@ export async function exerciseLayer(entry, session, device, space, baseURL, fove
             session.addEventListener("select",select);
         }
         const validation = [];
+        const inspections = [];
+        let inspectError;
         const sweep = moving ? trackHeadSweep() : null;
         await bounded(new Promise((resolve,reject) => {
             const frame = (time, xr) => {
                 if (!active) return;
                 try {
+                    if (inspectError) throw inspectError;
                     if (!requested.every((l,i)=>session.renderState.layers[i]===l) || session.renderState.layers.length!==requested.length)
                         throw Error("Wrong ordered layers at next frame");
                     firstTime ??= performance.now();
@@ -147,6 +189,8 @@ export async function exerciseLayer(entry, session, device, space, baseURL, fove
                             {source:item.image,origin:[i*item.width,0]},
                             {texture:sub.colorTexture,origin:[sub.viewport.x,sub.viewport.y,(descriptor.baseArrayLayer??0)+i]},
                             [item.width,item.height]);
+                            if (!item.uploaded && assets[item.kind]==="rect-mono.png")
+                                inspections.push(inspectRect(device,sub).catch(e=>{inspectError=e;}));
                         } }
                         finally { validation.push(device.popErrorScope()); }
                         item.uploaded = true;
@@ -162,14 +206,16 @@ export async function exerciseLayer(entry, session, device, space, baseURL, fove
                         session.requestAnimationFrame(frame);
                         return;
                     }
-                    if (performance.now()-firstTime < 8000 || (select && !selected) || (sweep && sweep.result().degrees < 15)) { session.requestAnimationFrame(frame); return; }
+                    if (performance.now()-firstTime < duration || (select && !selected) || (sweep && sweep.result().degrees < 15)) { session.requestAnimationFrame(frame); return; }
                     if (useVideo && !(video.currentTime !== videoTime && video.readyState >= 2) || !media && owned.some(item=>!item.uploaded))
                         throw Error(media ? "No decoded video advance" : "No redraw/upload");
                     resolve();
                 } catch(e) { reject(e); }
             };
             session.requestAnimationFrame(frame);
-        }),select || moving ? 60000 : 20000,select ? "No quad selection or required motion confirmed" : moving ? "No 15-degree tracked head sweep" : "No visible layer frames");
+        }),select || moving ? 60000 : duration+12000,select ? "No quad selection or required motion confirmed" : moving ? "No 15-degree tracked head sweep" : "No layer frames");
+        await Promise.all(inspections);
+        if (inspectError) throw inspectError;
         const errors = (await bounded(Promise.all(validation),5000,"GPU validation timed out")).filter(Boolean);
         if (errors.length) throw Error(errors[0].message);
         if (operation === "destroy") {
@@ -179,7 +225,7 @@ export async function exerciseLayer(entry, session, device, space, baseURL, fove
             if (error?.name !== "InvalidStateError") throw Error("Destroyed layer was not rejected with InvalidStateError");
         }
         const changedRGB=operation==="textureVideo" ? await verifyVideoPixels(device,video) : undefined;
-        return {title,frames:count,foveation,mediaSeconds:video?.currentTime,headSweep:sweep?.result(),changedRGB};
+        return {title,frames:count,foveation,mediaSeconds:video?.currentTime,headSweep:sweep?.result(),changedRGB,verifiedLayerImages:inspections.length};
     } finally {
         active = false;
         if (select) session.removeEventListener("select",select);

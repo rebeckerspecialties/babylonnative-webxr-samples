@@ -7,6 +7,7 @@ export function showMenu(scene, xr, current, run, next) {
     const panel = CreatePlane("WebXR samples", {width: 0.85, height: 0.52, sideOrientation: 2}, scene);
     const manager = xr.baseExperience.sessionManager;
     let anchor = null;
+    let visible = true;
     const recenter = () => { anchor = null; panel.setEnabled(false); };
     panel.setEnabled(false);
     const poseObserver = manager.onXRFrameObservable.add(frame => {
@@ -17,7 +18,7 @@ export function showMenu(scene, xr, current, run, next) {
         if (!anchor) return;
         panel.position.set(anchor.x, anchor.y, anchor.z);
         panel.rotation.y = Math.atan2(anchor.nx, anchor.nz);
-        panel.setEnabled(true);
+        panel.setEnabled(visible);
     });
     const texture = AdvancedDynamicTexture.CreateForMesh(panel, 1024, 624);
     texture.background = "#182632";
@@ -33,6 +34,7 @@ export function showMenu(scene, xr, current, run, next) {
         buttons.push({ b, action }); controls.addControl(b);
     }
     const select = event => {
+        if (!visible) return;
         const pose = event.frame.getPose(event.inputSource.targetRaySpace, manager.referenceSpace);
         const hit = menuHit(anchor, pose?.transform.matrix, 0.85, 0.52);
         if (!hit) return;
@@ -44,7 +46,8 @@ export function showMenu(scene, xr, current, run, next) {
         }
     };
     const unbind = bindMenuInput(manager,select,recenter);
-    return { refresh: () => { title.text = current(); }, dispose: () => {
+    return { setVisible: value => { visible=value; panel.setEnabled(visible && !!anchor); },
+        refresh: () => { title.text = current(); }, dispose: () => {
         manager.onXRFrameObservable.remove(poseObserver);
         unbind();
         texture.dispose();

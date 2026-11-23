@@ -39,6 +39,11 @@ public final class SampleActivity extends Activity {
             BabylonNative.runtimeEval(runtime, "globalThis.webxrProjectionRoundTrip=true;globalThis.webxrSamplePage=26",
                     "app:///Scripts/projection-roundtrip.js");
         }
+        int inspect = getIntent().getIntExtra("inspectImage", -1);
+        if (menu && (inspect == 3 || inspect == 4)) {
+            BabylonNative.runtimeEval(runtime, "globalThis.webxrInspectImage=true;globalThis.webxrSamplePage=" + inspect,
+                    "app:///Scripts/inspect-image.js");
+        }
         BabylonNative.runtimeLoadScript(runtime, "app:///Scripts/main.js");
         if (menu) BabylonNative.runtimeLoadScript(runtime, "app:///Scripts/launcher.js");
         view = new BabylonView(getApplication(), runtime);
