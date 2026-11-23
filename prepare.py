@@ -4,6 +4,7 @@ from hashlib import sha256
 from html.parser import HTMLParser
 from pathlib import Path
 from shutil import copyfile, copytree, ignore_patterns
+import subprocess
 
 
 class Module(HTMLParser):
@@ -52,8 +53,10 @@ def generate(checkout, output):
     (output / "layer-images").mkdir(exist_ok=True)
     for name in ("sunflower","reticle","cube-room"):
         copytree(checkout / "media/gltf" / name, output / "spatial" / name, dirs_exist_ok=True, ignore=ignore_patterns("*.blend"))
-    for image in ("rect-mono.png","mono_equirect_test.png","mono_cube_map.png"):
+    for image in ("rect-mono.png","mono_equirect_test.png"):
         copyfile(checkout / "media/textures" / image, output / "layer-images" / image)
+    subprocess.run(["java", Path(__file__).parent / "tools/PrepareCube.java",
+                    checkout / "media/textures/mono_cube_map.png", output / "layer-images/mono_cube_map.png"], check=True)
     for asset in ("bbb-sunflower-540p2-1min.webm","ATTRIBUTION.md"):
         copyfile(checkout / "media/video" / asset, output / "layer-images" / asset)
     for asset in ("controller.gltf", "controller-left.gltf", "controller.bin", "ATTRIBUTION.md"):
