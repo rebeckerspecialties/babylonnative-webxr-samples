@@ -8,7 +8,7 @@ the named canvas and entry action; the browser page retains its Enter VR button.
 There is no fallback to WebGL or OpenGL ES.
 
 The BabylonNative submodule pins
-[`755c3f06`](https://github.com/rebeckerspecialties/BabylonNative/commit/755c3f06).
+[`3400b309`](https://github.com/rebeckerspecialties/BabylonNative/commit/3400b309).
 It contains the stereo projection-array, raw controller pose, canvas ink-bound and Adreno depth-clear fixes.
 The app uses two-pass WebGPU by default; the pin also includes a separate
 opt-in single-pass Babylon material pixel fixture.

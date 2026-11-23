@@ -29,7 +29,16 @@ async function prepareLauncher() {
         // One owner of renderState/rAF: a Babylon XR camera must not request
         // subimages from its own projection while a raw WebGPU check replaces it.
         const device = await (await navigator.gpu.requestAdapter({xrCompatible:true})).requestDevice();
-        const session = await navigator.xr.requestSession("immersive-vr",{requiredFeatures:["webgpu","layers","local"]});
+        const unknown="test-only-unknown-xr-feature";
+        try {
+            const unexpected=await navigator.xr.requestSession("immersive-vr",{requiredFeatures:[unknown]});
+            await unexpected.end();
+            throw Error("The runtime granted an unknown required XR feature");
+        } catch(e) {
+            if(e.name!=="NotSupportedError") throw e;
+        }
+        const session = await navigator.xr.requestSession("immersive-vr",{requiredFeatures:["webgpu","layers","local"],optionalFeatures:[unknown]});
+        if (session.enabledFeatures.includes(unknown)) throw Error("An unavailable optional feature was granted");
         const binding = new XRGPUBinding(session,device);
         const base = binding.createProjectionLayer({colorFormat:binding.getPreferredColorFormat()});
         session.updateRenderState({layers:[base]});
