@@ -3,7 +3,7 @@ import argparse
 from hashlib import sha256
 from html.parser import HTMLParser
 from pathlib import Path
-from shutil import copyfile
+from shutil import copyfile, copytree, ignore_patterns
 
 
 class Module(HTMLParser):
@@ -50,8 +50,12 @@ def generate(checkout, output):
         copyfile(checkout / asset, output / asset)
     (output / "controller").mkdir(exist_ok=True)
     (output / "layer-images").mkdir(exist_ok=True)
+    for name in ("sunflower","reticle"):
+        copytree(checkout / "media/gltf" / name, output / "spatial" / name, dirs_exist_ok=True, ignore=ignore_patterns("*.blend"))
     for image in ("rect-mono.png","mono_equirect_test.png","mono_cube_map.png"):
         copyfile(checkout / "media/textures" / image, output / "layer-images" / image)
+    for asset in ("bbb-sunflower-540p2-1min.webm","ATTRIBUTION.md"):
+        copyfile(checkout / "media/video" / asset, output / "layer-images" / asset)
     for asset in ("controller.gltf", "controller-left.gltf", "controller.bin", "ATTRIBUTION.md"):
         copyfile(checkout / "media/gltf/controller" / asset, output / "controller" / asset)
     (pages / "vr-barebones.html").write_bytes(html)

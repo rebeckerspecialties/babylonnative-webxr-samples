@@ -9,6 +9,7 @@ def buildMenu = tasks.register('buildPublicMenu', Exec) {
     workingDir source
     inputs.files(['composition.mjs','gripModel.mjs','headMotion.mjs','menuRay.mjs','projectionPixels.mjs'].collect { new File(source, it) })
     inputs.files(new File(source, 'launcher.ts'), new File(source, 'launcher.html'), new File(source, 'publicMenu.ts'), new File(source, 'package-lock.json'), new File(source, 'buildLauncher.cjs'))
+    inputs.file(new File(source, 'spatial.ts'))
     outputs.file(new File(launcher, 'launcher.js'))
     commandLine 'npm', 'run', 'build:menu'
 }
@@ -17,6 +18,9 @@ def generate = tasks.register('generateSample', Exec) {
     inputs.files(new File(source, 'prepare.py'), new File(source, 'checks.js'), new File(source, 'projectionReplacement.js'), new File(source, 'trackedInput.js'), new File(source, 'flatControl.js'), new File(upstream, 'webgpu/vr-barebones.html'))
     inputs.files(new File(upstream, 'css/common.css'), new File(upstream, 'favicon-32x32.png'), new File(upstream, 'favicon-96x96.png'))
     inputs.dir(new File(upstream, 'media/gltf/controller'))
+    inputs.dir(new File(upstream, 'media/video'))
+    inputs.dir(new File(upstream, 'media/gltf/sunflower'))
+    inputs.dir(new File(upstream, 'media/gltf/reticle'))
     inputs.files(['rect-mono.png', 'mono_equirect_test.png', 'mono_cube_map.png'].collect { new File(upstream, 'media/textures/' + it) })
     outputs.dir(layout.buildDirectory.dir('generated/entries'))
     commandLine 'python3', new File(source, 'prepare.py'), upstream, layout.buildDirectory.dir('generated/entries').get().asFile
@@ -30,6 +34,7 @@ def stage = tasks.register('stageSample', Sync) {
         from(host)
         from(layout.buildDirectory.dir('generated/entries/controller')) { into 'controller' }
         from(layout.buildDirectory.dir('generated/entries/layer-images')) { into 'layer-images' }
+        from(layout.buildDirectory.dir('generated/entries/spatial')) { into 'spatial' }
     }
     doLast {
         for (name in ['launcher.js', 'main.js', 'babylon_lite_bootstrap.js']) {
@@ -38,6 +43,7 @@ def stage = tasks.register('stageSample', Sync) {
     }
 }
 android {
+    androidResources { noCompress += ['webm'] }
     namespace = 'com.rebeckerspecialties.xrsamples'
     compileSdk = 35
     defaultConfig {

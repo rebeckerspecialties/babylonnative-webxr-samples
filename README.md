@@ -8,7 +8,7 @@ the named canvas and entry action; the browser page retains its Enter VR button.
 There is no fallback to WebGL or OpenGL ES.
 
 The BabylonNative submodule pins
-[`2e11430e`](https://github.com/rebeckerspecialties/BabylonNative/commit/2e11430e21cc576fff82a6de302fb2e33e34633c).
+[`e81f3909`](https://github.com/rebeckerspecialties/BabylonNative/commit/e81f3909).
 It contains the stereo projection-array, raw controller pose, canvas ink-bound and Adreno depth-clear fixes.
 The app uses two-pass WebGPU by default; the pin also includes a separate
 opt-in single-pass Babylon material pixel fixture.
@@ -85,7 +85,7 @@ Run `node --test *.test.cjs *.test.mjs` to exercise the control logic without a 
 
 | Reference pages | Native fixture and acceptance |
 | --- | --- |
-| proj-layer, proj-multiview | Two separate eye passes versus a two-view array draw, with and without application depth. Read back a red center pixel on the left and green on the right; check the same colors in the lenses. Single-pass uses an optional native GPU feature. |
+| proj-layer, proj-multiview | Draw the same near and far triangles in world space for both eyes. Test a known foreground pixel at each eye's independently projected target center, with a small eye-specific color difference to detect aliased slices. Single-pass uses an optional native GPU feature. |
 | quad-layer, cyld-layer, eqrt-layer, cube-layer | Submit each real compositor layer. Check orientation, angular coverage, and seams in each eye while turning the head. |
 | quad-ab-test, quad-select, destroy-layer | Inspect mixed ordered layers, use an actual selecting ray on the two quads, and reject resubmission of a destroyed layer. Confirm projection restoration. |
 | eqrt-video, media-layer-sample | Explicit video uploads and XRMediaBinding are separate cases. Check stereo top/bottom order, advancing decoded pictures and no stale layer after exit. The selector also exercises media cylinders and quads. |
@@ -116,6 +116,10 @@ The plain multiview page disabled Enter VR. Spacewarp and multiview occlusion
 both attempted immersive entry, but IWER rejected it while their inline session
 was active. Both video controls had decoded frames and advancing playback in
 the focused browser rerun. Inspect video pixels independently of frame counts.
-Compare both images of the timed destruction test. The pinned native runtime
-only submits projection; non-projection and media controls expose implementation
-gaps, not passes.
+Compare both images of the timed destruction test. On Quest 1, the pinned native
+runtime submits quad, cylinder, equirect and cube images through OpenXR. Direct
+media quad, cylinder and equirect layers use an Android decoder surface. Video
+uploaded as a WebGPU texture uses a separate, much slower CPU copy. The packaged
+clip is stereo top/bottom and requires no network. Use `android/test-layers.py`
+for unattended frame, pixel and decoder checks. A pass does not measure optical
+alignment, visible seams, motion reprojection quality or GPU foveation.

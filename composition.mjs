@@ -7,7 +7,6 @@ export const layerCases = [
     ["Select one of two quads", ["Quad","Quad"], "select"], ["Video on equirect texture", ["Equirect"], "textureVideo"],
     ["Media equirect", ["Equirect"], "media"], ["Media cylinder", ["Cylinder"], "media"], ["Media quad", ["Quad"], "media"],
 ];
-const videoURL = "https://oculus-mp4.s3.amazonaws.com/immersive+video+8K+for+Oculus+Browser/everestvr_4.3k_30s_360_h264_crf23_binaural_CREDIT_JON_GRIFFITH_injected.mp4";
 export function requireFactories(binding, kinds) {
     for (const kind of kinds) if (typeof binding["create"+kind+"Layer"] !== "function")
         throw Error("Missing " + binding.constructor.name + ".create" + kind + "Layer");
@@ -49,7 +48,7 @@ export async function exerciseLayer(entry, session, device, space, baseURL, fove
         if (useVideo) {
             video = document.createElement("video");
             video.crossOrigin = "anonymous"; video.loop = true; video.muted = true; video.playsInline = true;
-            video.src = videoURL;
+            video.src = baseURL + "bbb-sunflower-540p2-1min.webm";
             await bounded(video.play(),15000,"Media did not start");
         }
         for (const [i,kind] of kinds.entries()) {

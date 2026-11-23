@@ -21,6 +21,13 @@ public final class SampleActivity extends Activity {
         }
         boolean menu = getIntent().getBooleanExtra("launcher", true);
         if (menu) BabylonNative.runtimeLoadScript(runtime, "app:///Scripts/menu-entry.js");
+        int[] cases = getIntent().getIntArrayExtra("layerChecks");
+        if (cases != null && menu) {
+            for (int index : cases)
+                if (index < 3 || index >= 55) throw new IllegalArgumentException("Invalid compositor check: " + index);
+            BabylonNative.runtimeEval(runtime, "globalThis.webxrLayerChecks=" + java.util.Arrays.toString(cases),
+                    "app:///Scripts/layer-check-options.js");
+        }
         if (menu && getIntent().getBooleanExtra("checkHandoff", false)) {
             BabylonNative.runtimeLoadScript(runtime, "app:///Scripts/menu-check.js");
         }

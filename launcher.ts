@@ -2,6 +2,7 @@ import { showMenu } from "sample-menu";
 import { attachGripModel } from "./gripModel.mjs";
 import { exerciseLayer, layerCases } from "./composition.mjs";
 import { projectionPixels } from "./projectionPixels.mjs";
+import { spatialCases, spatialSample } from "./spatial";
 import { WebGPUEngine } from "@babylonjs/core/Engines/webgpuEngine";
 import { Scene } from "@babylonjs/core/scene";
 import { FreeCamera } from "@babylonjs/core/Cameras/freeCamera";
@@ -17,6 +18,31 @@ import "@babylonjs/core/XR/features/WebXRHandTracking";
 // Keep the menu's Babylon scene and its observers out of the reference renderer.
 async function prepareLauncher() {
     const native = typeof globalThis.runWebXRSample === "function";
+    if (native && Array.isArray(globalThis.webxrLayerChecks)) {
+        // One owner of renderState/rAF: a Babylon XR camera must not request
+        // subimages from its own projection while a raw WebGPU check replaces it.
+        const device = await (await navigator.gpu.requestAdapter({xrCompatible:true})).requestDevice();
+        const session = await navigator.xr.requestSession("immersive-vr",{requiredFeatures:["webgpu","layers","local"]});
+        const binding = new XRGPUBinding(session,device);
+        const base = binding.createProjectionLayer({colorFormat:binding.getPreferredColorFormat()});
+        session.updateRenderState({layers:[base]});
+        const space = await session.requestReferenceSpace("local");
+        await new Promise(resolve=>session.requestAnimationFrame(resolve));
+        for(const page of globalThis.webxrLayerChecks) {
+            const index=(page-3)%26, foveation=page>=29?1:null;
+            try {
+                console.info("XR check begin", page);
+                const result=index<22 ? await exerciseLayer(layerCases[index%11],session,device,space,
+                    "app:///Scripts/layer-images/",foveation,index>=11) :
+                    await projectionPixels(session,device,space,index>=24,index%2!==0,foveation);
+                console.info("XR layer submitted", JSON.stringify(result));
+            } catch(e) {console.error("XR layer FAIL",page,e.message);}
+        }
+        await session.end();
+        device.destroy();
+        console.info("XR layer sequence finished");
+        return;
+    }
     const engine = new WebGPUEngine(document.getElementById("webgpu_canvas"), { xrCompatible: true, audioEngine: false });
     await engine.initAsync();
     const scene = new Scene(engine);
@@ -50,7 +76,7 @@ async function prepareLauncher() {
             ...[false,true].flatMap(single=>[false,true].map(depth=>({entry:[(single?"Single-pass":"Two-pass")+" stereo: "+(depth?"color + depth":"color only")],foveation,single,depth})))
         ]);
         const titles = ["Stereo projection", "Viewer-relative projection", "Projection layer replacement",
-            ...variants.map(v=>v.entry[0]+(v.foveation === null ? "" : " + foveation")+("moving" in v && v.moving ? " + head sweep" : ""))];
+            ...variants.map(v=>v.entry[0]+(v.foveation === null ? "" : " + foveation")+("moving" in v && v.moving ? " + head sweep" : "")),...spatialCases.map(v=>v.title)];
         let status = "";
         const initialPage = Number(native ? globalThis.webxrSamplePage : new URL(location.href).searchParams.get("page"));
         let page = Number.isInteger(initialPage) && initialPage >= 0 && initialPage < titles.length ? initialPage : 0;
@@ -58,15 +84,32 @@ async function prepareLauncher() {
         const run = async () => {
             if (busy) return;
             busy = true;
+            if(page>=3+variants.length) {
+                const kind=spatialCases[page-3-variants.length];
+                try {
+                    if((kind.hit||kind.planes)&&!(await navigator.xr.isSessionSupported("immersive-ar"))) throw Error("Immersive AR unavailable on this device");
+                    await xr.baseExperience.exitXRAsync();
+                    try {
+                        const result=await spatialSample(kind,scene,xr,native?"app:///Scripts/spatial/":"./spatial/");
+                        status="Placed: "+result.placements;
+                    } finally {await xr.baseExperience.enterXRAsync("immersive-vr","local",xr.renderTarget,{requiredFeatures:["webgpu","layers"]});}
+                } catch(e) {status=e.message;console.error("XR spatial FAIL",kind.title,e.message);}
+                finally {busy=false;menu.refresh?.();}
+                return;
+            }
             if (page >= 3) {
                 const v = variants[page-3];
                 const manager = xr.baseExperience.sessionManager;
                 try {
                     let result;
                     if ("single" in v) {
-                        engine.stopRenderLoop();
-                        try { result = await projectionPixels(manager.session,engine._device,manager.referenceSpace,v.single,v.depth,v.foveation); }
-                        finally { engine.runRenderLoop(()=>scene.render()); }
+                        await xr.baseExperience.exitXRAsync();
+                        try {
+                            const raw=await navigator.xr.requestSession("immersive-vr",{requiredFeatures:["webgpu","layers","local"]});
+                            try {
+                                result=await projectionPixels(raw,engine._device,await raw.requestReferenceSpace("local"),v.single,v.depth,v.foveation);
+                            } finally {await raw.end();}
+                        } finally {await xr.baseExperience.enterXRAsync("immersive-vr","local",xr.renderTarget,{requiredFeatures:["webgpu","layers"]});}
                     } else {
                         result = await exerciseLayer(v.entry,manager.session,engine._device,manager.referenceSpace,
                             native ? "app:///Scripts/layer-images/" : "./layer-images/", v.foveation, v.moving);
