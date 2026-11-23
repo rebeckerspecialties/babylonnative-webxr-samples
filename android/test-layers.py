@@ -6,6 +6,11 @@ import tempfile
 import time
 
 
+def release_test_process(adb, package, launched_pid, pidof, run=subprocess.run):
+    if launched_pid and pidof() == launched_pid:
+        run(adb + ["shell", "am", "force-stop", package], check=True, timeout=10)
+
+
 def verify(lines, pid, expected):
     complete = []
     warp_accepted = False
@@ -43,12 +48,13 @@ if __name__ == "__main__":
     args = p.parse_args()
     adb = ["adb", "-s", args.serial]
     package = "com.rebeckerspecialties.xrsamples"
+    def pidof():
+        return subprocess.run(adb + ["shell", "pidof", package], capture_output=True, text=True, timeout=10).stdout.strip()
+    pid = None
     with tempfile.NamedTemporaryFile() as out:
         reader = subprocess.Popen(adb + ["logcat", "-T", "1", "-v", "threadtime", "-s", "BabylonNative", "AndroidRuntime", "libc"], stdout=out)
         try:
             subprocess.run(adb + ["shell", "am", "start", "-S", "-W", "-n", package + "/.SampleActivity", "--eia", "layerChecks", ",".join(map(str,args.checks))], check=True, timeout=30)
-            def pidof():
-                return subprocess.run(adb + ["shell", "pidof", package], capture_output=True, text=True, timeout=10).stdout.strip()
             pid = pidof()
             deadline = time.monotonic() + 35 + 65 * len(args.checks)
             while time.monotonic() < deadline:
@@ -64,3 +70,6 @@ if __name__ == "__main__":
         finally:
             reader.terminate()
             reader.wait(timeout=10)
+            # This automated entry point deliberately ends its last XR session.
+            # Do not leave its empty immersive activity covering the user's Home.
+            release_test_process(adb, package, pid, pidof)

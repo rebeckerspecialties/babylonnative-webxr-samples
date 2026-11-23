@@ -37,6 +37,7 @@ jobs:
           sdkmanager 'platforms;android-34' 'platforms;android-35' 'ndk;29.0.14206865' 'cmake;3.22.1'
           npm ci
           node --test *.test.cjs *.test.mjs
+          python3 -m unittest discover -s android -p 'test_*.py'
       - run: bash third_party/BabylonNative/Apps/Playground/Android/gradlew -p android :app:assembleQualification -PARM64Only -PjsEngine=V8
       - run: python3 android/check-apk.py android/app/build/outputs/apk/qualification/app-qualification.apk
       - uses: actions/upload-artifact@v4
