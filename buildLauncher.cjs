@@ -12,7 +12,7 @@ fs.mkdirSync(output, { recursive: true });
 esbuild.build({
     entryPoints: [path.join(__dirname, "launcher.ts")], outfile: path.join(output, "launcher.js"),
     bundle: true, format: "iife", platform: "browser", target: "chrome112", minify: true,
-    plugins: [{ name: "guard-video-prewarm", setup(build) {
+    plugins: [require("./benchmarkPlugin.cjs")(), { name: "guard-video-prewarm", setup(build) {
         build.onLoad({ filter: /\/Engines\/WebGPU\/webgpuTextureManager\.js$/ }, args => {
             const src = fs.readFileSync(args.path, "utf8");
             const eager = /^(\s*)this\._getVideoPipeline\("rgba8unorm"[^\n]*\);$/gm;

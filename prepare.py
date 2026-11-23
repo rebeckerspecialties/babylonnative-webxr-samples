@@ -50,7 +50,7 @@ def generate(checkout, output):
         copyfile(checkout / asset, output / asset)
     (output / "controller").mkdir(exist_ok=True)
     (output / "layer-images").mkdir(exist_ok=True)
-    for name in ("sunflower","reticle"):
+    for name in ("sunflower","reticle","cube-room"):
         copytree(checkout / "media/gltf" / name, output / "spatial" / name, dirs_exist_ok=True, ignore=ignore_patterns("*.blend"))
     for image in ("rect-mono.png","mono_equirect_test.png","mono_cube_map.png"):
         copyfile(checkout / "media/textures" / image, output / "layer-images" / image)

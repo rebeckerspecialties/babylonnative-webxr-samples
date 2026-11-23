@@ -15,7 +15,7 @@ with ZipFile(sys.argv[1]) as apk:
         if not apk.getinfo(str(base / name)).file_size:
             raise ValueError(f"Empty asset: {name}")
     for name in ["controller/controller.gltf", "controller/controller-left.gltf",
-                 "spatial/reticle/reticle.gltf", "spatial/sunflower/sunflower.gltf"]:
+                 "spatial/reticle/reticle.gltf", "spatial/sunflower/sunflower.gltf", "spatial/cube-room/cube-room.gltf"]:
         path = base / name
         model = json.loads(apk.read(str(path)))
         for item in model.get("buffers", []) + model.get("images", []):

@@ -21,6 +21,10 @@ public final class SampleActivity extends Activity {
         }
         boolean menu = getIntent().getBooleanExtra("launcher", true);
         if (menu) BabylonNative.runtimeLoadScript(runtime, "app:///Scripts/menu-entry.js");
+        if (menu && getIntent().getBooleanExtra("selectionBenchmark", false)) {
+            BabylonNative.runtimeEval(runtime, "globalThis.webxrBenchmarkSpaceWarp=" + getIntent().getBooleanExtra("spaceWarp", false),
+                    "app:///Scripts/benchmark-options.js");
+        }
         int[] cases = getIntent().getIntArrayExtra("layerChecks");
         if (cases != null && menu) {
             for (int index : cases)

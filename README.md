@@ -8,7 +8,7 @@ the named canvas and entry action; the browser page retains its Enter VR button.
 There is no fallback to WebGL or OpenGL ES.
 
 The BabylonNative submodule pins
-[`96f0cf07`](https://github.com/rebeckerspecialties/BabylonNative/commit/96f0cf07).
+[`755c3f06`](https://github.com/rebeckerspecialties/BabylonNative/commit/755c3f06).
 It contains the stereo projection-array, raw controller pose, canvas ink-bound and Adreno depth-clear fixes.
 The app uses two-pass WebGPU by default; the pin also includes a separate
 opt-in single-pass Babylon material pixel fixture.
@@ -98,6 +98,16 @@ establish a change in the native density map. The head-sweep variants wait for
 at least 15 degrees of tracked rotation, and record the actual angle. Use the display and runtime timing
 at the same head-motion/checkpoint to qualify timewarp and foveation. Missing
 factories and frame deadlines report failures; no mesh fallback counts as a layer.
+
+Run the pinned WebGPU Input Selection Benchmark from the menu or pass
+`--ez selectionBenchmark true` to SampleActivity. It uses the upstream shaders,
+ripple compute pass, MSAA, shape sequence, 5 s warmup, 10 s measurement and 95%
+keep-up criterion. Only the HTML controls, flat preview and remote model URLs
+are adapted. The Android package includes the cube room and both controllers.
+Pass `--ez spaceWarp true` as well to require motion-vector reprojection;
+rejection is a capability failure, not a lower-scoring run. On Quest 1 the
+ordinary benchmark ran to completion and reported fewer than two shapes held
+68.4 fps. Stereo tests check actual callback timestamps as well as eye pixels.
 
 ### Browser layer reference
 

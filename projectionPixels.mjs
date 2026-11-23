@@ -47,10 +47,12 @@ struct V { @builtin(position) p:vec4f, @location(0) @interpolate(flat) eye:u32, 
         device.queue.writeBuffer(vertices,0,points);
         const group=device.createBindGroup({layout:pipeline.getBindGroupLayout(0),entries:[{binding:0,resource:{buffer:uniforms,offset:0,size:128}}]});
         session.updateRenderState({layers:[layer]}); changed = true;
-        let frames = 0, begin;
+        let frames = 0, begin, firstTimestamp;
+        const stamps=await bounded(Promise.all([0,1].map(()=>new Promise(done=>session.requestAnimationFrame(done)))),5000,"No paired XR callbacks");
+        if(!Number.isFinite(stamps[0]) || stamps[0] !== stamps[1]) throw Error("Callbacks for the same XR frame have different timestamps");
         await new Promise((resolve,reject)=>{
             timer = setTimeout(()=>reject(Error("No tracked stereo pixel sample")),15000);
-            const tick = (_,frame) => {
+            const tick = (timestamp,frame) => {
                 if (!active) return;
                 try {
                     const pose = frame.getViewerPose(space);
@@ -80,7 +82,10 @@ struct V { @builtin(position) p:vec4f, @location(0) @interpolate(flat) eye:u32, 
                     }
                     frames++;
                     begin ??= performance.now();
-                    const last = performance.now()-begin >= 4000;
+                    firstTimestamp ??= timestamp;
+                    const elapsed=performance.now()-begin;
+                    const last = elapsed >= 4000;
+                    if(last && Math.abs(timestamp-firstTimestamp-elapsed)>250) throw Error("XR timestamps do not advance in milliseconds");
                     if (last) for (const [i,s] of subs.entries()) {
                         const m=matrices[i], x=(1+m[12]/m[15])/2, y=(1-m[13]/m[15])/2;
                         if(!(m[15]>0 && x>0 && y>0 && x<1 && y<1)) throw Error("World target outside the eye viewport");

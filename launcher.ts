@@ -18,6 +18,13 @@ import "@babylonjs/core/XR/features/WebXRHandTracking";
 // Keep the menu's Babylon scene and its observers out of the reference renderer.
 async function prepareLauncher() {
     const native = typeof globalThis.runWebXRSample === "function";
+    if (native && typeof globalThis.webxrBenchmarkSpaceWarp === "boolean") {
+            try {
+                const result=await require("input-selection-page").runBenchmark("app:///Scripts/",globalThis.webxrBenchmarkSpaceWarp);
+                console.info("XR benchmark finished",result);
+            } catch(e) { console.error("XR benchmark FAIL",e.stack || e); }
+            return;
+    }
     if (native && Array.isArray(globalThis.webxrLayerChecks)) {
         // One owner of renderState/rAF: a Babylon XR camera must not request
         // subimages from its own projection while a raw WebGPU check replaces it.
@@ -76,7 +83,8 @@ async function prepareLauncher() {
             ...[false,true].flatMap(single=>[false,true].map(depth=>({entry:[(single?"Single-pass":"Two-pass")+" stereo: "+(depth?"color + depth":"color only")],foveation,single,depth})))
         ]);
         const titles = ["Stereo projection", "Viewer-relative projection", "Projection layer replacement",
-            ...variants.map(v=>v.entry[0]+(v.foveation === null ? "" : " + foveation")+("moving" in v && v.moving ? " + head sweep" : "")),...spatialCases.map(v=>v.title)];
+            ...variants.map(v=>v.entry[0]+(v.foveation === null ? "" : " + foveation")+("moving" in v && v.moving ? " + head sweep" : "")),...spatialCases.map(v=>v.title),
+            "Input Selection Benchmark","Input Selection Benchmark + space warp"];
         let status = "";
         const initialPage = Number(native ? globalThis.webxrSamplePage : new URL(location.href).searchParams.get("page"));
         let page = Number.isInteger(initialPage) && initialPage >= 0 && initialPage < titles.length ? initialPage : 0;
@@ -84,6 +92,15 @@ async function prepareLauncher() {
         const run = async () => {
             if (busy) return;
             busy = true;
+            if(page>=titles.length-2) {
+                try {
+                    await xr.baseExperience.exitXRAsync();
+                    try {status=await require("input-selection-page").runBenchmark(native?"app:///Scripts/":"./",page===titles.length-1);}
+                    finally {await xr.baseExperience.enterXRAsync("immersive-vr","local",xr.renderTarget,{requiredFeatures:["webgpu","layers"]});}
+                } catch(e) {status=e.message;console.error("XR benchmark FAIL",e.stack || e);}
+                finally {busy=false;menu.refresh?.();}
+                return;
+            }
             if(page>=3+variants.length) {
                 const kind=spatialCases[page-3-variants.length];
                 try {
