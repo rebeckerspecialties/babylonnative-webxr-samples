@@ -28,7 +28,7 @@ def verify(lines, pid, expected):
             complete.append(active)
             active = None
         if "XR layer sequence finished" in line:
-            if 100 in expected and not warp_accepted:
+            if any(case in (100, 102, 103, 104) for case in expected) and not warp_accepted:
                 raise RuntimeError("OpenXR did not accept the motion/depth projection")
             if complete != expected:
                 raise RuntimeError(f"Missing results: {complete} vs {expected}")

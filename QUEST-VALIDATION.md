@@ -11,10 +11,17 @@ different things: callback counts alone do not establish binocular alignment.
 | Video on a WebGPU texture | Same 960×1080 packed 30 fps source, eight seconds: 42 XR callbacks with the single packed snapshot; 556 and 553 with the streaming decoder. After timing, GPU RGB readbacks changed in both packed eye regions on both runs. Direct equirect/cylinder/quad controls delivered 567/568/572 callbacks. |
 | Two-pass and single-pass stereo, each with and without depth | All four passed distinct per-eye foreground and silhouette readbacks at a world-space target. Probed the center and both sides of each projected edge; near geometry won the depth test. IPD in head coordinates was 66.36 mm with left/right in the correct order. Observed 286–287 callbacks in 4 s. |
 | Selection benchmark | Original MSAA and ripple enabled; fewer than two shapes sustained the required 68.4 fps. |
-| Projection fixed foveation | Fails: projection returns null. Runtime advertises XR_FB_foveation_vulkan; the Vulkan driver advertises VK_EXT_fragment_density_map. Neither means the application's eye pass uses a density attachment. |
+| Projection fixed foveation | Check 101: at the recommended 1216×1344 eye extent, 16×16 checkerboards in both eyes measured 240 alternating horizontal edges in center and periphery at level zero. At maximum they measured 240 centrally and zero peripherally. Returning to zero restored all four counts to 240. Two-pass and multiview silhouettes passed with and without depth at level one (51–54). Other eye extents do not advertise this map. |
 | Application space warp | Check 100 requests the required feature, renders full stereo color (1216×1344) with separate RGBA16F motion and depth32float (304×336), and requires successful OpenXR submission of the stereo warp chain. It alternates missing-eye, complete and missing-motion frames. The full sequence plus streaming and direct media controls passed on Quest 1. The number of frames synthesized by the compositor was not measured. |
 | Timewarp | VrApi reported TW=2.85 ms and 72/72 fps in a direct-media quad run. A physical head sweep and optical inspection remain outstanding. |
+| Combined foveation, space warp and media | Checks 102–104: enabled maximum fixed foveation, submitted stereo motion/depth alongside a playing direct quad, cylinder or equirect. In four seconds, 139/143/143 application frames; the three videos advanced 4.03/3.80/3.81 seconds. Test 36 independently observed changed decoded video pixels in both packed eye regions at 553 XR callbacks in eight seconds with high foveation. |
 | Hit test, anchors, hit + anchors, planes + anchors | Included with local assets. Need a tracked AR runtime with the corresponding grants. Quest 1's opaque OpenXR backend cannot qualify AR. |
+
+At runtime revision `fc3903db`, the three combined warp/direct-media checks
+delivered 145/141/144 frames in four seconds. Streaming video after the
+combined sequence delivered 382 callbacks in eight seconds; three consecutive
+repeats after a quad warp run delivered 549/552/552. Both eye regions changed
+in all four runs. The transition variance remains unexplained.
 
 The unmodified [CI APK at 3e9719c](https://github.com/rebeckerspecialties/babylonnative-webxr-samples/actions/runs/45160177937)
 passed the 14 default Android layer checks on the Quest. To run the suite on another headset:

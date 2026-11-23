@@ -3,6 +3,7 @@ import { attachGripModel } from "./gripModel.mjs";
 import { bounded, exerciseLayer, layerCases } from "./composition.mjs";
 import { projectionPixels } from "./projectionPixels.mjs";
 import { warpFrames } from "./spaceWarp.mjs";
+import { densityPixels } from "./densityPixels.mjs";
 import { spatialCases, spatialSample } from "./spatial";
 import { WebGPUEngine } from "@babylonjs/core/Engines/webgpuEngine";
 import { Scene } from "@babylonjs/core/scene";
@@ -38,7 +39,7 @@ async function prepareLauncher() {
         } catch(e) {
             if(e.name!=="NotSupportedError") throw e;
         }
-        const warp = globalThis.webxrLayerChecks.includes(100);
+        const warp = globalThis.webxrLayerChecks.some(n=>n===100 || (n>=102 && n<=104));
         const session = await navigator.xr.requestSession("immersive-vr",{requiredFeatures:["webgpu","layers","local",...(warp?["space-warp"]:[])],optionalFeatures:[unknown]});
         if (session.enabledFeatures.includes(unknown)) throw Error("An unavailable optional feature was granted");
         const binding = new XRGPUBinding(session,device);
@@ -50,7 +51,7 @@ async function prepareLauncher() {
             const index=(page-3)%26, foveation=page>=29?1:null;
             try {
                 console.info("XR check begin", page);
-                const result=page===100 ? await warpFrames(session,device,space) : index<22 ? await exerciseLayer(layerCases[index%11],session,device,space,
+                const result=page===101 ? await densityPixels(session,device,space) : page>=100 ? await warpFrames(session,device,space,["Quad","Cylinder","Equirect"][page-102]) : index<22 ? await exerciseLayer(layerCases[index%11],session,device,space,
                     "app:///Scripts/layer-images/",foveation,index>=11) :
                     await projectionPixels(session,device,space,index>=24,index%2!==0,foveation);
                 console.info("XR layer submitted", JSON.stringify(result));
