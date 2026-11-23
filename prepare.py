@@ -49,6 +49,9 @@ def generate(checkout, output):
         (output / asset).parent.mkdir(parents=True, exist_ok=True)
         copyfile(checkout / asset, output / asset)
     (output / "controller").mkdir(exist_ok=True)
+    (output / "layer-images").mkdir(exist_ok=True)
+    for image in ("rect-mono.png","mono_equirect_test.png","mono_cube_map.png"):
+        copyfile(checkout / "media/textures" / image, output / "layer-images" / image)
     for asset in ("controller.gltf", "controller-left.gltf", "controller.bin", "ATTRIBUTION.md"):
         copyfile(checkout / "media/gltf/controller" / asset, output / "controller" / asset)
     (pages / "vr-barebones.html").write_bytes(html)
@@ -64,7 +67,7 @@ if (params.get("launcher") === "1") {
         session.addEventListener("select", () => session.end(), { once: true });
         await begin(session);
     };
-    onSessionEnded = () => location.assign("../launcher.html?page=" + ((Math.max(0, index) + 1) % 3));
+    onSessionEnded = () => location.assign("../launcher.html?page=" + (Math.max(0, index) + 1));
 }
 """
     (pages / "checks.html").write_text(page.replace(module, body + checks + browser_menu + "\ninitXR();\n" + end))

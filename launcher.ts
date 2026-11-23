@@ -1,4 +1,7 @@
 import { showMenu } from "sample-menu";
+import { attachGripModel } from "./gripModel.mjs";
+import { exerciseLayer, layerCases } from "./composition.mjs";
+import { projectionPixels } from "./projectionPixels.mjs";
 import { WebGPUEngine } from "@babylonjs/core/Engines/webgpuEngine";
 import { Scene } from "@babylonjs/core/scene";
 import { FreeCamera } from "@babylonjs/core/Cameras/freeCamera";
@@ -17,6 +20,8 @@ async function prepareLauncher() {
     const engine = new WebGPUEngine(document.getElementById("webgpu_canvas"), { xrCompatible: true, audioEngine: false });
     await engine.initAsync();
     const scene = new Scene(engine);
+    // Controller glTF assets and WebXR grip/target-ray poses use the same right-handed basis.
+    scene.useRightHandedSystem = true;
     new HemisphericLight("controller light", Vector3.Up(), scene);
     scene.activeCamera = new FreeCamera("viewer", Vector3.Zero(), scene);
     const xr = await WebXRDefaultExperience.CreateAsync(scene, {
@@ -31,32 +36,52 @@ async function prepareLauncher() {
         return result.meshes;
     }
     async function attachController(controller) {
-        const source = controller.inputSource;
-        if (!controller.grip || source.hand || source.targetRayMode !== "tracked-pointer") return;
-        const meshes = await loadGrip(source.handedness);
-        if (scene.isDisposed || controller.grip.isDisposed()) {
-            for (const mesh of meshes) mesh.dispose(false, true);
-            return;
-        }
-        for (const mesh of meshes) {
-            if (!mesh.parent) mesh.parent = controller.grip;
-            mesh.isPickable = false;
-        }
-        console.info("XR selector grip model", source.handedness, meshes.length);
+        const manager = xr.baseExperience.sessionManager;
+        await attachGripModel(controller, loadGrip, manager.onXRFrameObservable, () => manager.referenceSpace);
     }
     xr.input.onControllerAddedObservable.add(c => attachController(c).catch(report));
     for (const c of xr.input.controllers) attachController(c).catch(report);
     const start = async () => {
-        await xr.baseExperience.enterXRAsync("immersive-vr", "local", xr.renderTarget, { requiredFeatures: ["webgpu"] });
+        await xr.baseExperience.enterXRAsync("immersive-vr", "local", xr.renderTarget, { requiredFeatures: ["webgpu","layers"] });
         engine.runRenderLoop(() => scene.render());
         let busy = false;
-        const titles = ["Stereo projection", "Viewer-relative projection", "Projection layer replacement"];
+        const variants = [null,1].flatMap(foveation=>[
+            ...[false,true].flatMap(moving=>layerCases.map(entry=>({entry,foveation,moving}))),
+            ...[false,true].flatMap(single=>[false,true].map(depth=>({entry:[(single?"Single-pass":"Two-pass")+" stereo: "+(depth?"color + depth":"color only")],foveation,single,depth})))
+        ]);
+        const titles = ["Stereo projection", "Viewer-relative projection", "Projection layer replacement",
+            ...variants.map(v=>v.entry[0]+(v.foveation === null ? "" : " + foveation")+("moving" in v && v.moving ? " + head sweep" : ""))];
+        let status = "";
         const initialPage = Number(native ? globalThis.webxrSamplePage : new URL(location.href).searchParams.get("page"));
         let page = Number.isInteger(initialPage) && initialPage >= 0 && initialPage < titles.length ? initialPage : 0;
-        const next = () => { page = (page + 1) % titles.length; };
+        const next = () => { if (!busy) { status = ""; page = (page + 1) % titles.length; } };
         const run = async () => {
             if (busy) return;
             busy = true;
+            if (page >= 3) {
+                const v = variants[page-3];
+                const manager = xr.baseExperience.sessionManager;
+                try {
+                    let result;
+                    if ("single" in v) {
+                        engine.stopRenderLoop();
+                        try { result = await projectionPixels(manager.session,engine._device,manager.referenceSpace,v.single,v.depth,v.foveation); }
+                        finally { engine.runRenderLoop(()=>scene.render()); }
+                    } else {
+                        result = await exerciseLayer(v.entry,manager.session,engine._device,manager.referenceSpace,
+                            native ? "app:///Scripts/layer-images/" : "./layer-images/", v.foveation, v.moving);
+                    }
+                    status = "Submitted: " + result.frames + " frames";
+                    console.info("XR layer submitted",JSON.stringify(result));
+                } catch (e) {
+                    status = e.message;
+                    console.error("XR layer FAIL",titles[page],e.message);
+                } finally {
+                    busy = false;
+                    menu.refresh?.();
+                }
+                return;
+            }
             menu.dispose();
             await xr.baseExperience.exitXRAsync();
             engine.stopRenderLoop();
@@ -71,7 +96,7 @@ async function prepareLauncher() {
             }
             else location.assign("webgpu/checks.html?launcher=1&page=" + page);
         };
-        const menu = showMenu(scene, xr, () => (page + 1) + " / " + titles.length + "   " + titles[page], () => run().catch(report), next);
+        const menu = showMenu(scene, xr, () => (page + 1) + " / " + titles.length + "   " + titles[page]+(status ? "\n"+status : ""), () => run().catch(report), next);
         console.info("XR launcher ready", titles[page]);
         // Desk qualification drives the very same callbacks as the controls, after rendering.
         if (globalThis.webxrCheckMenuHandoff === true) {

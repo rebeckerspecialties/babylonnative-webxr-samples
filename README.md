@@ -8,10 +8,12 @@ the named canvas and entry action; the browser page retains its Enter VR button.
 There is no fallback to WebGL or OpenGL ES.
 
 The BabylonNative submodule pins
-[`c542cf26`](https://github.com/rebeckerspecialties/BabylonNative/commit/c542cf26987638dde6f2c4ae273cb37a562b0d0c).
+[`2e11430e`](https://github.com/rebeckerspecialties/BabylonNative/commit/2e11430e21cc576fff82a6de302fb2e33e34633c).
 It contains the stereo projection-array, raw controller pose, canvas ink-bound and Adreno depth-clear fixes.
 The app uses two-pass WebGPU by default; the pin also includes a separate
 opt-in single-pass Babylon material pixel fixture.
+Color-only projection now leaves depth unallocated. The Android embedding also
+retains its native window through delayed initialization.
 
 Pin `immersive-web/webxr-samples` at `6d548461574f733e2d0578deb32b6f0387735dab`.
 The generator checks the input SHA-256 and preserves the copyright notice.
@@ -72,10 +74,30 @@ to the raw sample after 120 scene frames. Browser runs require real activation.
 Do not distribute the optional generated UI bundle, playback data, or system
 captures that show the physical room.
 
-The third guided fixture alternates full- and three-quarter-scale projection layers.
+The selector anchors at the first tracked viewer height, ignoring pitch. Squeeze
+to recenter. Run and Next use the selecting source's target ray at the time of
+the select event; only a tracked grip gets a model. The third guided fixture
+alternates full- and three-quarter-scale projection layers.
 It checks both transitions across frame boundaries and 64 frames of stereo subimages.
-Run `node --test trackedInput.test.cjs projectionReplacement.test.cjs` to exercise
-the control logic without a headset.
+Run `node --test *.test.cjs *.test.mjs` to exercise the control logic without a headset.
+
+### What to qualify on hardware
+
+| Reference pages | Native fixture and acceptance |
+| --- | --- |
+| proj-layer, proj-multiview | Two separate eye passes versus a two-view array draw, with and without application depth. Read back a red center pixel on the left and green on the right; check the same colors in the lenses. Single-pass uses an optional native GPU feature. |
+| quad-layer, cyld-layer, eqrt-layer, cube-layer | Submit each real compositor layer. Check orientation, angular coverage, and seams in each eye while turning the head. |
+| quad-ab-test, quad-select, destroy-layer | Inspect mixed ordered layers, use an actual selecting ray on the two quads, and reject resubmission of a destroyed layer. Confirm projection restoration. |
+| eqrt-video, media-layer-sample | Explicit video uploads and XRMediaBinding are separate cases. Check stereo top/bottom order, advancing decoded pictures and no stale layer after exit. The selector also exercises media cylinders and quads. |
+| input-selection-spacewarp | Requires space-warp negotiation, depth and motion vectors. A timewarped projection or high compositor FPS is not this test. No native motion-vector transport yet. |
+| proj-multiview-occlusion | An immersive-AR GPU depth-sensing test. Ordinary VR projection depth is not environment depth. No native equivalent in this selector yet. |
+
+The regular and fixed-foveation variants use the same source imagery; a null
+fixedFoveation getter fails the latter. A successful getter/setter alone cannot
+establish a change in the native density map. The head-sweep variants wait for
+at least 15 degrees of tracked rotation, and record the actual angle. Use the display and runtime timing
+at the same head-motion/checkpoint to qualify timewarp and foveation. Missing
+factories and frame deadlines report failures; no mesh fallback counts as a layer.
 
 ### Browser layer reference
 
@@ -90,6 +112,10 @@ This opens the 13 original layers pages in Chromium with IWER and the WebXR
 Layers polyfill. It saves screenshots, immersive callback counts and page errors.
 These are WebGL visual references only; the Android app remains WebGPU-only.
 On Chrome 155 with IWER 2.8, ten pages delivered at least 30 immersive callbacks.
-The two multiview pages and spacewarp page did not. Inspect video pixels independently
-of frame counts. Compare both images of the timed destruction test. Composition layers
-other than projection are not yet supported by the pinned native runtime.
+The plain multiview page disabled Enter VR. Spacewarp and multiview occlusion
+both attempted immersive entry, but IWER rejected it while their inline session
+was active. Both video controls had decoded frames and advancing playback in
+the focused browser rerun. Inspect video pixels independently of frame counts.
+Compare both images of the timed destruction test. The pinned native runtime
+only submits projection; non-projection and media controls expose implementation
+gaps, not passes.

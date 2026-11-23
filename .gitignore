@@ -1,6 +1,7 @@
 /dist/
 /build/
 /node_modules/
+/tools/reference/node_modules/
 __pycache__/
 *.apk
 *.keystore
