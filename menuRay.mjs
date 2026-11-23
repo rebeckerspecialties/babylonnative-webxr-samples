@@ -17,3 +17,26 @@ export function menuHit(a, ray, width, height) {
     const v = 0.5 - (ray[13] + dy*t - a.y) / height;
     return u >= 0 && u <= 1 && v >= 0 && v <= 1 ? [u, v] : null;
 }
+
+// A projection or benchmark fixture can end and replace the session without
+// rebuilding the scene. Input events and the world-fixed anchor belong to a session.
+export function bindMenuInput(manager, select, recenter) {
+    let current;
+    const bind = session => {
+        if (current === session) return;
+        current?.removeEventListener("select",select);
+        current?.removeEventListener("squeeze",recenter);
+        current = session;
+        recenter();
+        current?.addEventListener("select",select);
+        current?.addEventListener("squeeze",recenter);
+    };
+    const begin = manager.onXRSessionInit.add(bind);
+    const end = manager.onXRSessionEnded.add(()=>bind(null));
+    bind(manager.session);
+    return () => {
+        manager.onXRSessionInit.remove(begin);
+        manager.onXRSessionEnded.remove(end);
+        bind(null);
+    };
+}

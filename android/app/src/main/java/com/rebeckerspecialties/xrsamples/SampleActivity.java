@@ -35,6 +35,10 @@ public final class SampleActivity extends Activity {
         if (menu && getIntent().getBooleanExtra("checkHandoff", false)) {
             BabylonNative.runtimeLoadScript(runtime, "app:///Scripts/menu-check.js");
         }
+        if (menu && getIntent().getBooleanExtra("projectionRoundTrip", false)) {
+            BabylonNative.runtimeEval(runtime, "globalThis.webxrProjectionRoundTrip=true;globalThis.webxrSamplePage=26",
+                    "app:///Scripts/projection-roundtrip.js");
+        }
         BabylonNative.runtimeLoadScript(runtime, "app:///Scripts/main.js");
         if (menu) BabylonNative.runtimeLoadScript(runtime, "app:///Scripts/launcher.js");
         view = new BabylonView(getApplication(), runtime);

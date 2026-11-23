@@ -1,6 +1,6 @@
 import { showMenu } from "sample-menu";
 import { attachGripModel } from "./gripModel.mjs";
-import { exerciseLayer, layerCases } from "./composition.mjs";
+import { bounded, exerciseLayer, layerCases } from "./composition.mjs";
 import { projectionPixels } from "./projectionPixels.mjs";
 import { spatialCases, spatialSample } from "./spatial";
 import { WebGPUEngine } from "@babylonjs/core/Engines/webgpuEngine";
@@ -167,6 +167,22 @@ async function prepareLauncher() {
         };
         const menu = showMenu(scene, xr, () => (page + 1) + " / " + titles.length + "   " + titles[page]+(status ? "\n"+status : ""), () => run().catch(report), next);
         console.info("XR launcher ready", titles[page]);
+        if (globalThis.webxrProjectionRoundTrip === true) {
+            const manager=xr.baseExperience.sessionManager;
+            const original=manager.session;
+            const tracked=()=>bounded(new Promise(resolve=>{
+                const ob=manager.onXRFrameObservable.add(frame=>{
+                    if(!frame.getViewerPose(manager.referenceSpace)) return;
+                    manager.onXRFrameObservable.remove(ob); resolve(true);
+                });
+            }),5000,"No tracked menu frame");
+            await tracked();
+            await run();
+            if(!status.startsWith("Submitted:") || original===manager.session)
+                throw Error("Projection menu roundtrip failed: "+status);
+            await tracked();
+            console.info("XR projection menu returned",titles[page]);
+        }
         // Desk qualification drives the very same callbacks as the controls, after rendering.
         if (globalThis.webxrCheckMenuHandoff === true) {
             for (const hand of ["left", "right"]) {

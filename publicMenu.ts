@@ -1,7 +1,7 @@
 import { CreatePlane } from "@babylonjs/core/Meshes/Builders/planeBuilder";
 import "@babylonjs/core/Materials/standardMaterial";
 import { AdvancedDynamicTexture, Button, StackPanel, TextBlock } from "@babylonjs/gui/2D";
-import { menuAnchor, menuHit } from "./menuRay.mjs";
+import { bindMenuInput, menuAnchor, menuHit } from "./menuRay.mjs";
 
 export function showMenu(scene, xr, current, run, next) {
     const panel = CreatePlane("WebXR samples", {width: 0.85, height: 0.52, sideOrientation: 2}, scene);
@@ -19,7 +19,6 @@ export function showMenu(scene, xr, current, run, next) {
         panel.rotation.y = Math.atan2(anchor.nx, anchor.nz);
         panel.setEnabled(true);
     });
-    manager.session.addEventListener("squeeze", recenter);
     const texture = AdvancedDynamicTexture.CreateForMesh(panel, 1024, 624);
     texture.background = "#182632";
     const controls = new StackPanel();
@@ -44,11 +43,10 @@ export function showMenu(scene, xr, current, run, next) {
             Promise.resolve().then(button.action);
         }
     };
-    manager.session.addEventListener("select", select);
+    const unbind = bindMenuInput(manager,select,recenter);
     return { refresh: () => { title.text = current(); }, dispose: () => {
         manager.onXRFrameObservable.remove(poseObserver);
-        manager.session.removeEventListener("squeeze", recenter);
-        manager.session.removeEventListener("select", select);
+        unbind();
         texture.dispose();
         panel.dispose();
     } };

@@ -22,6 +22,13 @@ passed the 14 default Android layer checks on the Quest. To run the suite on ano
 `python3 android/test-layers.py SERIAL 25 26 27 28`; the reported eye separation comes
 from the headset, not a hard-coded 66 mm camera. Those readbacks precede lens distortion.
 
+The menu also completed a real Babylon session → raw WebGPU two-pass color/depth
+fixture → new tracked Babylon session round trip in one process. Use
+`adb shell am start -S -n com.rebeckerspecialties.xrsamples/.SampleActivity --ez projectionRoundTrip true`
+and watch for `XR projection menu returned`. The test leaves the selector in view
+for an actual trigger press. Unit tests cover stale-session input, rebinding,
+repeat notifications and disposal; the round trip does not synthesize a controller click.
+
 Adreno system-wide counters during the ordinary upstream selection workload,
 without driver tracing: 72.45–73.88% of shading time in fragments,
 40.31–41.90% ALU capacity utilized, 4.09–5.13% stalled on system memory.
