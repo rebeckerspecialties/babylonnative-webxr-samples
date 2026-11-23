@@ -9,6 +9,38 @@ export function multiply(a,b) {
 export function sampleEye(view, model) {
     return multiply(view.projectionMatrix, multiply(view.transform.inverse.matrix, model));
 }
+const nearPoints = [-.75,-.7,0,.75,-.7,0,0,.8,0];
+export function eyeBaseline(pose) {
+    const [left,right] = pose.views;
+    if (left?.eye !== "left" || right?.eye !== "right") throw Error("Expected left then right eye views");
+    const head = pose.transform.inverse.matrix;
+    const l = multiply(head,left.transform.matrix), r = multiply(head,right.transform.matrix);
+    const x=r[12]-l[12], y=r[13]-l[13], z=r[14]-l[14];
+    if (!(x>0 && x>Math.hypot(y,z))) throw Error("Coincident, reversed or misaligned eye origins: "+[x,y,z]);
+    return Math.hypot(x,y,z);
+}
+// At a pixel-center scanline, sample just inside and outside BOTH projected edges.
+// Eye-colored centers alone can pass with duplicated matrices or a wrong viewport.
+export function silhouette(m,width,height) {
+    const xy=[];
+    for(let i=0;i<9;i+=3) {
+        const a=nearPoints[i],b=nearPoints[i+1],w=m[3]*a+m[7]*b+m[15];
+        if(!(w>0)) throw Error("Stereo target behind the eye");
+        xy.push([(1+(m[0]*a+m[4]*b+m[12])/w)*width/2,(1-(m[1]*a+m[5]*b+m[13])/w)*height/2]);
+    }
+    const row=Math.floor(xy.reduce((s,p)=>s+p[1],0)/3), y=row+.5;
+    const edges=[];
+    for(let i=0;i<3;i++) {
+        const [a,b]=xy[i], [c,d]=xy[(i+1)%3];
+        if ((b>y)!==(d>y)) edges.push(a+(y-b)*(c-a)/(d-b));
+    }
+    edges.sort((a,b)=>a-b);
+    const [l,r]=edges;
+    const xs=[Math.floor((l+r)/2),Math.floor(l+2),Math.floor(r-2),Math.floor(l-2),Math.floor(r+2)];
+    if(!(edges.length===2 && r-l>6 && row>=0 && row<height && xs.every(x=>x>=0&&x<width)))
+        throw Error("Stereo target edges outside the eye viewport");
+    return {row,xs};
+}
 export async function projectionPixels(session, device, space, singlePass, withDepth, foveation) {
     if (singlePass && !device._nativeFeatures?.has("xr-stereo-multiview")) throw Error("Single-pass multiview unavailable");
     const binding = new XRGPUBinding(session,device), format = binding.getPreferredColorFormat();
@@ -16,7 +48,7 @@ export async function projectionPixels(session, device, space, singlePass, withD
     const layer = binding.createProjectionLayer({colorFormat:format,
         ...(withDepth ? {depthStencilFormat:"depth24plus"} : {}),
         textureUsage:GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC});
-    let readback, uniforms, vertices, model, changed = false, active = true, timer;
+    let readback, uniforms, vertices, model, baseline, changed = false, active = true, timer;
     device.pushErrorScope("validation");
     let scope=true;
     try {
@@ -39,10 +71,10 @@ struct V { @builtin(position) p:vec4f, @location(0) @interpolate(flat) eye:u32, 
         const pipeline = await bounded(device.createRenderPipelineAsync({layout:"auto",...multiview,
             vertex:{module,entryPoint:"vs",buffers:[{arrayStride:12,attributes:[{shaderLocation:0,offset:0,format:"float32x3"}]}]},fragment:{module,entryPoint:"fs",targets:[{format}]},
             ...(withDepth ? {depthStencil:{format:"depth24plus",depthWriteEnabled:true,depthCompare:"less"}} : {})}),15000,"Stereo pipeline creation timed out");
-        readback=device.createBuffer({size:8,usage:GPUBufferUsage.MAP_READ|GPUBufferUsage.COPY_DST});
+        readback=device.createBuffer({size:40,usage:GPUBufferUsage.MAP_READ|GPUBufferUsage.COPY_DST});
         uniforms = device.createBuffer({size:128,usage:GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST});
         const packed = new Float32Array(32);
-        const points=new Float32Array([-.75,-.7,0,.75,-.7,0,0,.8,0,-1.275,-1.19,-.6,1.275,-1.19,-.6,0,1.36,-.6]);
+        const points=new Float32Array([...nearPoints,-1.275,-1.19,-.6,1.275,-1.19,-.6,0,1.36,-.6]);
         vertices=device.createBuffer({size:points.byteLength,usage:GPUBufferUsage.VERTEX|GPUBufferUsage.COPY_DST});
         device.queue.writeBuffer(vertices,0,points);
         const group=device.createBindGroup({layout:pipeline.getBindGroupLayout(0),entries:[{binding:0,resource:{buffer:uniforms,offset:0,size:128}}]});
@@ -87,11 +119,10 @@ struct V { @builtin(position) p:vec4f, @location(0) @interpolate(flat) eye:u32, 
                     const last = elapsed >= 4000;
                     if(last && Math.abs(timestamp-firstTimestamp-elapsed)>250) throw Error("XR timestamps do not advance in milliseconds");
                     if (last) for (const [i,s] of subs.entries()) {
-                        const m=matrices[i], x=(1+m[12]/m[15])/2, y=(1-m[13]/m[15])/2;
-                        if(!(m[15]>0 && x>0 && y>0 && x<1 && y<1)) throw Error("World target outside the eye viewport");
-                        enc.copyTextureToBuffer({texture:s.colorTexture,
-                            origin:[s.viewport.x+Math.floor(x*s.viewport.width),s.viewport.y+Math.floor(y*s.viewport.height),i]},
-                            {buffer:readback,offset:4*i},[1,1,1]);
+                        baseline ??= eyeBaseline(pose);
+                        const {row,xs}=silhouette(matrices[i],s.viewport.width,s.viewport.height);
+                        xs.forEach((x,j)=>enc.copyTextureToBuffer({texture:s.colorTexture,
+                            origin:[s.viewport.x+x,s.viewport.y+row,i]},{buffer:readback,offset:4*(5*i+j)},[1,1,1]));
                     }
                     device.queue.submit([enc.finish()]);
                     if (last) resolve(); else session.requestAnimationFrame(tick);
@@ -105,14 +136,14 @@ struct V { @builtin(position) p:vec4f, @location(0) @interpolate(flat) eye:u32, 
         const bytes = new Uint8Array(readback.getMappedRange());
         const red = format.startsWith("bgra") ? 2 : 0;
         const blue = 2-red;
-        for(let i=0;i<2;i++) {
-            const j=i*4;
-            if(bytes[j+red]!==255 || bytes[j+1]!==153 || bytes[j+blue]!==[51,56][i]) {
-                throw Error("Wrong foreground pixel in eye "+i+": "+bytes.slice(j,j+4));
-            }
+        for(let i=0;i<2;i++) for(let sample=0;sample<5;sample++) {
+            const j=(i*5+sample)*4;
+            const foreground=bytes[j+red]===255 && bytes[j+1]===153 && bytes[j+blue]===[51,56][i];
+            if((sample<3 && !foreground) || (sample>=3 && bytes[j+red]===255))
+                throw Error("Stereo silhouette mismatch at eye "+i+" sample "+sample+": "+bytes.slice(j,j+4));
         }
         readback.unmap();
-        return {frames,format,singlePass,withDepth,foveation};
+        return {frames,format,singlePass,withDepth,foveation,eyeSeparationMeters:baseline};
     } finally {
         active = false;
         clearTimeout(timer);

@@ -9,12 +9,18 @@ different things: callback counts alone do not establish binocular alignment.
 | Quad, cylinder, equirect and cube images, ordered layers, destruction | OpenXR accepted the native layers. Observed about 557–576 callbacks in 8 s. Source textures are packaged in the APK. |
 | Direct media quad, cylinder, equirect | Android decoder rendered to OpenXR-owned surfaces. 566–572 callbacks and 7.80–7.97 s media advancement in 8 s. |
 | Video on a WebGPU texture | Two independent eye snapshots: 21–22 callbacks in 8 s. One packed stereo snapshot: 42 callbacks in 8 s (7.94 s media advance); direct media measured 566 in the same run. CPU frame extraction remains unsuitable for real-time video. |
-| Two-pass and single-pass stereo, each with and without depth | All four passed distinct per-eye color readback at a world-space target. Near geometry won the depth test. Observed 283–286 callbacks in 4 s. |
+| Two-pass and single-pass stereo, each with and without depth | All four passed distinct per-eye foreground and silhouette readbacks at a world-space target. Probed the center and both sides of each projected edge; near geometry won the depth test. IPD in head coordinates was 66.36 mm with left/right in the correct order. Observed 286–287 callbacks in 4 s. |
 | Selection benchmark | Original MSAA and ripple enabled; fewer than two shapes sustained the required 68.4 fps. |
 | Projection fixed foveation | Fails: projection returns null. Runtime advertises XR_FB_foveation_vulkan; the Vulkan driver advertises VK_EXT_fragment_density_map. Neither means the application's eye pass uses a density attachment. |
-| Application space warp | Required feature rejects before session creation. The older result at a half-rate target was invalid: the sample returned early on a null motion-vector texture. |
+| Application space warp | Required feature rejects before session creation. The Quest runtime recommends a 304×336 motion image (1216×1344 projection) and lists RGBA16F, D16, D24S8 and D32F swapchain formats. Motion and corresponding depth are not yet submitted for synthesis. The older half-rate score was invalid: the sample returned early on a null motion-vector texture. |
 | Timewarp | VrApi reported TW=2.85 ms and 72/72 fps in a direct-media quad run. A physical head sweep and optical inspection remain outstanding. |
 | Hit test, anchors, hit + anchors, planes + anchors | Included with local assets. Need a tracked AR runtime with the corresponding grants. Quest 1's opaque OpenXR backend cannot qualify AR. |
+
+The unmodified [CI APK at 3e9719c](https://github.com/rebeckerspecialties/babylonnative-webxr-samples/actions/runs/45160177937)
+passed the 14 default Android layer checks on the Quest. To run the suite on another headset:
+`python3 android/test-layers.py SERIAL`. For just the projection silhouettes, use
+`python3 android/test-layers.py SERIAL 25 26 27 28`; the reported eye separation comes
+from the headset, not a hard-coded 66 mm camera. Those readbacks precede lens distortion.
 
 Adreno system-wide counters during the ordinary upstream selection workload,
 without driver tracing: 72.45–73.88% of shading time in fragments,
