@@ -1,4 +1,14 @@
 import {trackHeadSweep} from "./headMotion.mjs";
+
+export function uploadPackedVideo(queue,video,left,right) {
+    const a=left.viewport, b=right.viewport;
+    const slice=left.getViewDescriptor().baseArrayLayer??0;
+    if(left.colorTexture!==right.colorTexture || slice!==(right.getViewDescriptor().baseArrayLayer??0) ||
+       a.x!==b.x || b.y!==a.y+a.height || a.width!==b.width || a.height!==b.height ||
+       a.width!==video.videoWidth || 2*a.height!==video.videoHeight)
+        throw Error("Top/bottom video layout does not match the two reported eye viewports");
+    queue.copyExternalImageToTexture({source:video},{texture:left.colorTexture,origin:[a.x,a.y,slice]},[a.width,2*a.height]);
+}
 // Browser and native use the same binding. Never draw a mesh as a stand-in for a compositor layer.
 const assets = {Quad:"rect-mono.png", Cylinder:"rect-mono.png", Equirect:"mono_equirect_test.png", Cube:"mono_cube_map.png"};
 export const layerCases = [
@@ -99,11 +109,13 @@ export async function exerciseLayer(entry, session, device, space, baseURL, fove
                         if (media || !requested.includes(item.layer) || (!useVideo && !item.layer.needsRedraw)) continue;
                         const faces = item.kind === "Cube" ? 6 : 1;
                         device.pushErrorScope("validation");
-                        try { for (const eye of useVideo ? ["left","right"] : ["none"]) {
-                            const sub = gpu.getSubImage(item.layer,xr,eye);
+                        try { if(useVideo) {
+                            uploadPackedVideo(device.queue,item.image,gpu.getSubImage(item.layer,xr,"left"),gpu.getSubImage(item.layer,xr,"right"));
+                        } else {
+                            const sub = gpu.getSubImage(item.layer,xr,"none");
                             const descriptor = sub.getViewDescriptor();
                             for (let i=0;i<faces;i++) device.queue.copyExternalImageToTexture(
-                            {source:item.image,origin:[i*item.width,eye === "right" ? item.height : 0]},
+                            {source:item.image,origin:[i*item.width,0]},
                             {texture:sub.colorTexture,origin:[sub.viewport.x,sub.viewport.y,(descriptor.baseArrayLayer??0)+i]},
                             [item.width,item.height]);
                         } }

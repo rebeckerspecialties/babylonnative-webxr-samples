@@ -8,7 +8,7 @@ different things: callback counts alone do not establish binocular alignment.
 | --- | --- |
 | Quad, cylinder, equirect and cube images, ordered layers, destruction | OpenXR accepted the native layers. Observed about 557–576 callbacks in 8 s. Source textures are packaged in the APK. |
 | Direct media quad, cylinder, equirect | Android decoder rendered to OpenXR-owned surfaces. 566–572 callbacks and 7.80–7.97 s media advancement in 8 s. |
-| Video on a WebGPU texture | 21–22 callbacks in 8 s. The CPU frame-extraction path is not suitable for real-time video. |
+| Video on a WebGPU texture | Two independent eye snapshots: 21–22 callbacks in 8 s. One packed stereo snapshot: 42 callbacks in 8 s (7.94 s media advance); direct media measured 566 in the same run. CPU frame extraction remains unsuitable for real-time video. |
 | Two-pass and single-pass stereo, each with and without depth | All four passed distinct per-eye color readback at a world-space target. Near geometry won the depth test. Observed 283–286 callbacks in 4 s. |
 | Selection benchmark | Original MSAA and ripple enabled; fewer than two shapes sustained the required 68.4 fps. |
 | Projection fixed foveation | Fails: projection returns null. Runtime advertises XR_FB_foveation_vulkan; the Vulkan driver advertises VK_EXT_fragment_density_map. Neither means the application's eye pass uses a density attachment. |

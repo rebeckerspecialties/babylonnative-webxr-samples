@@ -1,6 +1,17 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { exerciseLayer, layerCases, requireFactories } from "./composition.mjs";
+import { exerciseLayer, layerCases, requireFactories, uploadPackedVideo } from "./composition.mjs";
+
+test("top/bottom stereo takes one video snapshot for both eyes", () => {
+    const texture={},video={videoWidth:960,videoHeight:1080},calls=[];
+    const eye=y=>({colorTexture:texture,viewport:{x:0,y,width:960,height:540},getViewDescriptor:()=>({baseArrayLayer:0})});
+    const queue={copyExternalImageToTexture:(...args)=>calls.push(args)};
+    uploadPackedVideo(queue,video,eye(0),eye(540));
+    assert.deepEqual(calls,[[{source:video},{texture,origin:[0,0,0]},[960,1080]]]);
+    assert.throws(()=>uploadPackedVideo(queue,video,eye(0),eye(0)),/viewports/);
+    assert.throws(()=>uploadPackedVideo(queue,video,eye(0),{...eye(540),colorTexture:{}}),/viewports/);
+    assert.equal(calls.length,1);
+});
 
 test("no projection fallback for missing media or GPU factories", () => {
     assert.throws(()=>requireFactories({createProjectionLayer(){}},["Cube"]),/createCubeLayer/);
