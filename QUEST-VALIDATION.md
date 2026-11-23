@@ -30,7 +30,11 @@ from the Quest, not pre-composition texture readbacks. Each run also verified fo
 layer subimage and returned to the selector (1,074 and 1,085 callbacks in the 16-second inspection,
 respectively). The launcher anchors the layer once to the user's Run pose, so it starts in front
 of the headset without following subsequent head movements. An initial successful upload or an
-increasing frame count alone does not test visible placement.
+increasing frame count alone does not test visible placement. For a fresh side-by-side capture,
+run `python android/verify-displayed-image.py capture.png` with `opencv-python-headless==4.11.0.86`.
+The reference match found 734/756 geometrically consistent points in the quad and 1,032/1,020
+in the cylinder (left/right). Blanking either eye makes the check fail. The host regression
+checks the matcher on these recorded inputs; a new APK still needs a new on-device capture.
 
 To repeat through the same Run handler, start `.SampleActivity` with `--ei inspectImage 3` (quad)
 or `--ei inspectImage 4` (cylinder). Capture the display during the inspection. The automated batch

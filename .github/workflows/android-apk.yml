@@ -38,6 +38,11 @@ jobs:
           npm ci
           node --test *.test.cjs *.test.mjs
           python3 -m unittest discover -s android -p 'test_*.py'
+      - name: Verify stereo display matching and missing-eye controls
+        run: |
+          python3 -m venv "$RUNNER_TEMP/check-display"
+          "$RUNNER_TEMP/check-display/bin/pip" install --only-binary=:all: opencv-python-headless==4.11.0.86
+          "$RUNNER_TEMP/check-display/bin/python" android/display-regressions.py
       - run: bash third_party/BabylonNative/Apps/Playground/Android/gradlew -p android :app:assembleQualification -PARM64Only -PjsEngine=V8
       - run: python3 android/check-apk.py android/app/build/outputs/apk/qualification/app-qualification.apk
       - uses: actions/upload-artifact@v4
