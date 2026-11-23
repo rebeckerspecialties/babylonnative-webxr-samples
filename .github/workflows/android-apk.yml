@@ -1,0 +1,43 @@
+name: Build WebXR sample APK
+on:
+  push:
+    branches: [main, android/compositor-layers]
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      samples-ref:
+        description: Exact WebXR samples revision to build
+        type: string
+        required: true
+permissions:
+  contents: read
+jobs:
+  apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: rebeckerspecialties/babylonnative-webxr-samples
+          ref: ${{ inputs.samples-ref || github.sha }}
+          submodules: recursive
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: |
+          rustup target add aarch64-linux-android
+          sdkmanager 'platforms;android-34' 'platforms;android-35' 'ndk;29.0.14206865' 'cmake;3.22.1'
+          npm ci
+          node --test *.test.cjs *.test.mjs
+      - run: bash third_party/BabylonNative/Apps/Playground/Android/gradlew -p android :app:assembleDebug -PARM64Only -PjsEngine=V8
+      - run: python3 android/check-apk.py android/app/build/outputs/apk/debug/app-debug.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: webxr-vulkan-arm64
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
