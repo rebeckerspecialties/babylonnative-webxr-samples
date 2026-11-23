@@ -43,8 +43,8 @@ Use the embedding's normal Android Vulkan/OpenXR toolchain and V8 configuration:
 ```sh
 git submodule update --init --recursive
 npm ci
-third_party/BabylonNative/Apps/Playground/Android/gradlew -p android :app:assembleDebug -PARM64Only -PjsEngine=V8
-adb install -r android/app/build/outputs/apk/debug/app-debug.apk
+third_party/BabylonNative/Apps/Playground/Android/gradlew -p android :app:assembleQualification -PARM64Only -PjsEngine=V8
+adb install -r android/app/build/outputs/apk/qualification/app-qualification.apk
 adb shell am start -a android.intent.action.MAIN -c com.oculus.intent.category.VR -n com.rebeckerspecialties.xrsamples/.SampleActivity
 ```
 

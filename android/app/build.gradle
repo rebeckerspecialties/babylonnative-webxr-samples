@@ -47,6 +47,13 @@ def stage = tasks.register('stageSample', Sync) {
     }
 }
 android {
+    buildTypes {
+        qualification {
+            initWith release
+            matchingFallbacks = ['release']
+            signingConfig signingConfigs.debug
+        }
+    }
     androidResources { noCompress += ['webm'] }
     namespace = 'com.rebeckerspecialties.xrsamples'
     compileSdk = 35
