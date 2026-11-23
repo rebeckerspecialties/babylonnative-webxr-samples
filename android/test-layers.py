@@ -8,12 +8,15 @@ import time
 
 def verify(lines, pid, expected):
     complete = []
+    warp_accepted = False
     active = None
     for line in lines.splitlines():
         if line.split()[2:3] != [pid]:
             continue
         if any(s in line for s in ("XR layer FAIL", "XR launcher FAIL", "FATAL EXCEPTION", "Fatal signal", "[Uncaught Error]")):
             raise RuntimeError(line)
+        if "Submitted stereo motion and depth to OpenXR compositor" in line:
+            warp_accepted = True
         if "XR check begin " in line:
             active = int(line.split("XR check begin ")[1])
             if active != expected[len(complete)]:
@@ -25,6 +28,8 @@ def verify(lines, pid, expected):
             complete.append(active)
             active = None
         if "XR layer sequence finished" in line:
+            if 100 in expected and not warp_accepted:
+                raise RuntimeError("OpenXR did not accept the motion/depth projection")
             if complete != expected:
                 raise RuntimeError(f"Missing results: {complete} vs {expected}")
             return True
