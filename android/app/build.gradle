@@ -10,6 +10,7 @@ def buildMenu = tasks.register('buildPublicMenu', Exec) {
     inputs.files(['composition.mjs','gripModel.mjs','headMotion.mjs','menuRay.mjs','projectionPixels.mjs','spaceWarp.mjs','densityPixels.mjs'].collect { new File(source, it) })
     inputs.files(new File(source, 'launcher.ts'), new File(source, 'launcher.html'), new File(source, 'publicMenu.ts'), new File(source, 'package-lock.json'), new File(source, 'buildLauncher.cjs'))
     inputs.file(new File(source, 'spatial.ts'))
+    inputs.file(new File(source, 'videoReference.mjs'))
     inputs.file(new File(source, 'benchmarkPlugin.cjs'))
     inputs.file(new File(upstream, 'webgpu/input-selection-benchmark.html'))
     inputs.dir(new File(upstream, 'js/render'))
@@ -18,6 +19,7 @@ def buildMenu = tasks.register('buildPublicMenu', Exec) {
 }
 def host = new File(project(':BabylonNative').projectDir, '../../Scripts/babylon_lite_bootstrap.js')
 def generate = tasks.register('generateSample', Exec) {
+    inputs.file(new File(source, 'tools/PrepareCube.java'))
     inputs.files(new File(source, 'prepare.py'), new File(source, 'checks.js'), new File(source, 'projectionReplacement.js'), new File(source, 'trackedInput.js'), new File(source, 'flatControl.js'), new File(upstream, 'webgpu/vr-barebones.html'))
     inputs.files(new File(upstream, 'css/common.css'), new File(upstream, 'favicon-32x32.png'), new File(upstream, 'favicon-96x96.png'))
     inputs.dir(new File(upstream, 'media/gltf/controller'))

@@ -1,4 +1,4 @@
-import { bounded } from "./composition.mjs";
+import { bounded, videoAngles } from "./composition.mjs";
 
 export async function warpFrames(session, device, space, mediaKind) {
     const binding = new XRGPUBinding(session, device);
@@ -19,6 +19,7 @@ export async function warpFrames(session, device, space, mediaKind) {
             const options = {space, layout: "stereo-top-bottom", transform: new XRRigidTransform({z:-2})};
             if (mediaKind === "Quad") Object.assign(options, {width:2,height:1});
             if (mediaKind === "Cylinder") Object.assign(options, {radius:2,centralAngle:1,aspectRatio:2});
+            if (mediaKind === "Equirect") Object.assign(options, videoAngles(video.videoWidth, video.videoHeight/2));
             media = new XRMediaBinding(session)["create"+mediaKind+"Layer"](video, options);
         }
         session.updateRenderState({layers: media ? [layer,media] : [layer]});

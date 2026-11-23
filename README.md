@@ -8,7 +8,7 @@ the named canvas and entry action; the browser page retains its Enter VR button.
 There is no fallback to WebGL or OpenGL ES.
 
 The BabylonNative submodule pins
-[`2f30face`](https://github.com/rebeckerspecialties/BabylonNative/commit/2f30face).
+[`0c5901c9`](https://github.com/rebeckerspecialties/BabylonNative/commit/0c5901c9).
 It contains the stereo projection-array, raw controller pose, canvas ink-bound and Adreno depth-clear fixes.
 The app uses two-pass WebGPU by default; the pin also includes a separate
 opt-in single-pass Babylon material pixel fixture.
@@ -17,6 +17,8 @@ retains its native window through delayed initialization.
 
 Pin `immersive-web/webxr-samples` at `6d548461574f733e2d0578deb32b6f0387735dab`.
 The generator checks the input SHA-256 and preserves the copyright notice.
+Use JDK 17 or newer on PATH. ImageIO applies the original cube sample's
+horizontal canvas mirror once at build time, for both native and browser output.
 
 ```sh
 python3 prepare.py "$WEBXR_SAMPLES_DIR" /tmp/webxr-samples

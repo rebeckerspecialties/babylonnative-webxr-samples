@@ -1,6 +1,7 @@
 """Fail on the first exception, absent result, dead app, or missed deadline."""
 import argparse
 import json
+from pathlib import Path
 import subprocess
 import tempfile
 import time
@@ -44,6 +45,7 @@ def verify(lines, pid, expected):
 if __name__ == "__main__":
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("serial")
+    p.add_argument("--capture", type=Path, help="Save a display capture during each case, after the sky-only video intro")
     p.add_argument("checks", nargs="*", type=int, default=[3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 25, 26, 27, 28])
     args = p.parse_args()
     adb = ["adb", "-s", args.serial]
@@ -51,6 +53,10 @@ if __name__ == "__main__":
     def pidof():
         return subprocess.run(adb + ["shell", "pidof", package], capture_output=True, text=True, timeout=10).stdout.strip()
     pid = None
+    seen = 0
+    capture_at = None
+    if args.capture:
+        args.capture.mkdir(exist_ok=True, parents=True)
     with tempfile.NamedTemporaryFile() as out:
         reader = subprocess.Popen(adb + ["logcat", "-T", "1", "-v", "threadtime", "-s", "BabylonNative", "AndroidRuntime", "libc"], stdout=out)
         try:
@@ -59,9 +65,20 @@ if __name__ == "__main__":
             deadline = time.monotonic() + 35 + 65 * len(args.checks)
             while time.monotonic() < deadline:
                 with open(out.name, encoding="utf-8", errors="replace") as log:
-                    if verify(log.read(), pid, args.checks):
+                    lines = log.read()
+                    if verify(lines, pid, args.checks):
                         print("PASS", args.checks)
                         break
+                    if args.capture:
+                        starts = [line for line in lines.splitlines() if line.split()[2:3] == [pid] and "XR check begin " in line]
+                        if len(starts) > seen:
+                            seen = len(starts)
+                            capture_at = time.monotonic() + (13 if args.checks[seen-1] in (10, 36, 105, 106) else 4)
+                        if capture_at and time.monotonic() >= capture_at:
+                            path = args.capture / f"{seen:02d}-case-{args.checks[seen-1]}.png"
+                            with path.open("wb") as image:
+                                subprocess.run(adb + ["exec-out", "screencap", "-p"], stdout=image, check=True, timeout=10)
+                            capture_at = None
                 if not pid or pidof() != pid:
                     raise RuntimeError("Sample exited without all requested results")
                 time.sleep(.5)

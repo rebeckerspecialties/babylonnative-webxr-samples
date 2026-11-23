@@ -40,11 +40,18 @@ jobs:
           python3 -m unittest discover -s android -p 'test_*.py'
       - name: Verify stereo display matching and missing-eye controls
         run: |
+          if ! command -v ffmpeg; then sudo apt-get update -qq && sudo apt-get install -y ffmpeg; fi
           python3 -m venv "$RUNNER_TEMP/check-display"
           "$RUNNER_TEMP/check-display/bin/pip" install --only-binary=:all: opencv-python-headless==4.11.0.86
           "$RUNNER_TEMP/check-display/bin/python" android/display-regressions.py
+          "$RUNNER_TEMP/check-display/bin/python" android/check-video-display.py --markers qualification/quest-1/identified-film-max-foveation.jpg
+          "$RUNNER_TEMP/check-display/bin/python" android/video-display-regressions.py
       - run: bash third_party/BabylonNative/Apps/Playground/Android/gradlew -p android :app:assembleQualification -PARM64Only -PjsEngine=V8
       - run: python3 android/check-apk.py android/app/build/outputs/apk/qualification/app-qualification.apk
+      - name: Verify the actual packaged cube faces against the original atlas
+        run: |
+          unzip -p android/app/build/outputs/apk/qualification/app-qualification.apk assets/Scripts/layer-images/mono_cube_map.png > "$RUNNER_TEMP/cube.png"
+          "$RUNNER_TEMP/check-display/bin/python" android/check-cube.py third_party/webxr-samples/media/textures/mono_cube_map.png "$RUNNER_TEMP/cube.png"
       - uses: actions/upload-artifact@v4
         with:
           name: webxr-vulkan-arm64

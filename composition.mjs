@@ -1,4 +1,5 @@
 import {trackHeadSweep} from "./headMotion.mjs";
+import {referenceRGB} from "./videoReference.mjs";
 
 export function uploadPackedVideo(queue,video,left,right) {
     const a=left.viewport, b=right.viewport;
@@ -9,34 +10,51 @@ export function uploadPackedVideo(queue,video,left,right) {
         throw Error("Top/bottom video layout does not match the two reported eye viewports");
     queue.copyExternalImageToTexture({source:video},{texture:left.colorTexture,origin:[a.x,a.y,slice]},[a.width,2*a.height]);
 }
-async function verifyVideoPixels(device, video) {
-    const w=video.videoWidth, h=video.videoHeight;
-    const texture=device.createTexture({size:[w,h],format:"rgba8unorm",
-        usage:GPUTextureUsage.COPY_DST|GPUTextureUsage.COPY_SRC|GPUTextureUsage.RENDER_ATTACHMENT});
-    const grid=4, eyeBytes=grid*grid*4;
-    const read=device.createBuffer({size:2*eyeBytes,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});
-    try {
-        async function sample() {
-            device.queue.copyExternalImageToTexture({source:video},{texture},[w,h]);
-            const enc=device.createCommandEncoder();
-            for(let i=0;i<grid*grid*2;i++) {
-                const x=Math.floor((i%grid+0.5)*w/grid);
-                const y=Math.floor((Math.floor(i/grid)+0.5)*h/(2*grid));
-                enc.copyTextureToBuffer({texture,origin:[x,y]}, {buffer:read,offset:i*4}, [1,1]);
-            }
-            device.queue.submit([enc.finish()]);
-            await bounded(read.mapAsync(GPUMapMode.READ),5000,"Video RGBA readback timed out");
-            try {return new Uint8Array(read.getMappedRange()).slice();}
-            finally {read.unmap();}
+// The source clip is stereo 16:9 film, not a 360-degree panorama. Preserve its
+// pixel aspect on a bounded patch of the equirect layer rather than magnifying a sky pixel.
+export function videoAngles(width, eyeHeight) {
+    const horizontal=Math.PI/2, halfHeight=horizontal*eyeHeight/(2*width);
+    return {centralHorizontalAngle:horizontal, lowerVerticalAngle:-halfHeight, upperVerticalAngle:halfHeight};
+}
+export function compareStereoRGB(actual, time, references=referenceRGB) {
+    let best;
+    for(let i=0;i<references.length;i++) {
+        if(Math.abs(12+i/6-time)>0.55) continue;
+        const hex=references[i], expected=Uint8Array.from(hex.match(/../g),v=>parseInt(v,16));
+        if(expected.length!==actual.length || actual.length%6!==0) throw Error("Invalid stereo reference dimensions");
+        const half=actual.length/2, error=[0,0];
+        let dot=0, aa=0, bb=0;
+        for(let j=0;j<half;j++) {
+            const x=actual[j]-actual[j+half], y=expected[j]-expected[j+half];
+            dot+=x*y; aa+=x*x; bb+=y*y;
+            error[0]+=Math.abs(actual[j]-expected[j]);error[1]+=Math.abs(actual[j+half]-expected[j+half]);
         }
-        const before=await sample();
-        await new Promise(resolve=>setTimeout(resolve,800));
-        const after=await sample();
-        const changed=[0,1].map(eye=>after.subarray(eye*eyeBytes,(eye+1)*eyeBytes).reduce(
-            (n,c,i)=>n+(i%4!==3 && Math.abs(c-before[eye*eyeBytes+i])>=4 ? 1 : 0),0));
-        if(changed.some(n=>n===0)) throw Error("Video clock advanced without changing RGB pixels in both packed eye regions: "+changed);
-        return changed;
-    } finally {read.destroy();texture.destroy();}
+        const mae=error.map(n=>n/half), disparity=dot/Math.sqrt(aa*bb || 1);
+        if(!best || Math.max(...mae)<Math.max(...best.mae)) best={referenceTime:12+i/6,mae,disparity};
+    }
+    if(!best || Math.max(...best.mae)>18 || best.disparity<0.25)
+        throw Error("Compositor video disagrees with left/right VP8 reference at "+time+": "+JSON.stringify(best));
+    return best;
+}
+async function inspectVideo(device,sub,time) {
+    const v=sub.viewport, texture=sub.colorTexture, slice=sub.getViewDescriptor().baseArrayLayer??0;
+    const stride=Math.ceil(v.width*4/256)*256;
+    const buffer=device.createBuffer({size:stride*v.height*2,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});
+    try {
+        const encoder=device.createCommandEncoder();
+        encoder.copyTextureToBuffer({texture,origin:[v.x,v.y,slice]}, {buffer,bytesPerRow:stride},[v.width,v.height*2]);
+        device.queue.submit([encoder.finish()]);
+        await bounded(buffer.mapAsync(GPUMapMode.READ),5000,"Video compositor texture readback timed out");
+        try {
+            const bytes=new Uint8Array(buffer.getMappedRange()), rgb=new Uint8Array(24*24*3);
+            const r=texture.format.startsWith("bgra")?2:0;
+            for(let y=0,i=0;y<24;y++) for(let x=0;x<24;x++) {
+                const p=Math.floor((y+.5)*v.height*2/24)*stride+Math.floor((x+.5)*v.width/24)*4;
+                rgb[i++]=bytes[p+r];rgb[i++]=bytes[p+1];rgb[i++]=bytes[p+2-r];
+            }
+            return compareStereoRGB(rgb,time);
+        } finally {buffer.unmap();}
+    } finally {buffer.destroy();}
 }
 // Browser and native use the same binding. Never draw a mesh as a stand-in for a compositor layer.
 const assets = {Quad:"rect-mono.png", Cylinder:"rect-mono.png", Equirect:"mono_equirect_test.png", Cube:"mono_cube_map.png"};
@@ -101,7 +119,7 @@ async function inspectRect(device,sub) {
         finally {read.unmap();}
     } finally {read.destroy();}
 }
-export async function exerciseLayer(entry, session, device, space, baseURL, foveation, moving = false, duration=8000) {
+export async function exerciseLayer(entry, session, device, space, baseURL, foveation, moving = false, duration=8000, identifyEyes=false) {
     const [title,kinds,operation] = entry;
     const original = Array.from(session.renderState.layers);
     const projection = original.find(layer => layer instanceof XRProjectionLayer);
@@ -138,9 +156,10 @@ export async function exerciseLayer(entry, session, device, space, baseURL, fove
             const height = useVideo ? image.videoHeight/2 : image.height;
             const width = useVideo ? image.videoWidth : kind === "Cube" ? height : image.width;
             if (!width || !height) throw Error("Source has no decoded dimensions");
+            if (kind==="Equirect" && useVideo) Object.assign(options,videoAngles(width,height));
             if (!media) Object.assign(options,{colorFormat:gpu.getPreferredColorFormat(),viewPixelWidth:width,viewPixelHeight:height,
                 isStatic:!useVideo,textureUsage:GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_DST |
-                    (!useVideo && assets[kind]==="rect-mono.png" ? GPUTextureUsage.COPY_SRC : 0)});
+                    (useVideo || assets[kind]==="rect-mono.png" ? GPUTextureUsage.COPY_SRC : 0)});
             const layer = media ? factory["create"+kind+"Layer"](video,options) : factory["create"+kind+"Layer"](options);
             owned.push({layer,image,width,height,kind});
         }
@@ -164,6 +183,9 @@ export async function exerciseLayer(entry, session, device, space, baseURL, fove
         }
         const validation = [];
         const inspections = [];
+        const videoSamples=[];
+        let eyeMarkers;
+        if (operation==="textureVideo") duration=Math.max(duration,15000);
         let inspectError;
         const sweep = moving ? trackHeadSweep() : null;
         await bounded(new Promise((resolve,reject) => {
@@ -181,7 +203,24 @@ export async function exerciseLayer(entry, session, device, space, baseURL, fove
                         const faces = item.kind === "Cube" ? 6 : 1;
                         device.pushErrorScope("validation");
                         try { if(useVideo) {
-                            uploadPackedVideo(device.queue,item.image,gpu.getSubImage(item.layer,xr,"left"),gpu.getSubImage(item.layer,xr,"right"));
+                            const left=gpu.getSubImage(item.layer,xr,"left"), now=video.currentTime;
+                            const right=gpu.getSubImage(item.layer,xr,"right");
+                            uploadPackedVideo(device.queue,item.image,left,right);
+                            if(videoSamples.length<2 && now>=12.5+videoSamples.length) {
+                                videoSamples.push(inspectVideo(device,left,now).catch(e=>{inspectError=e;}));
+                            }
+                            if (identifyEyes) {
+                                // Qualification only: the clean texture read above is ordered before
+                                // these writes. Only an external display capture can verify eye routing.
+                                eyeMarkers ??= [[255,0,255,255],left.colorTexture.format.startsWith("bgra")?[255,255,0,255]:[0,255,255,255]]
+                                    .map(rgba=>{const a=new Uint8Array(48*48*4);for(let i=0;i<a.length;i+=4)a.set(rgba,i);return a;});
+                                [left,right].forEach((eye,i)=>{
+                                    const v=eye.viewport;
+                                    device.queue.writeTexture({texture:eye.colorTexture,origin:[v.x+Math.floor(v.width/2)-24,
+                                        v.y+Math.floor(v.height/2)-24,eye.getViewDescriptor().baseArrayLayer??0]},
+                                        eyeMarkers[i],{bytesPerRow:48*4},[48,48]);
+                                });
+                            }
                         } else {
                             const sub = gpu.getSubImage(item.layer,xr,"none");
                             const descriptor = sub.getViewDescriptor();
@@ -224,8 +263,10 @@ export async function exerciseLayer(entry, session, device, space, baseURL, fove
             try { session.updateRenderState({layers:requested}); } catch(e) { error = e; }
             if (error?.name !== "InvalidStateError") throw Error("Destroyed layer was not rejected with InvalidStateError");
         }
-        const changedRGB=operation==="textureVideo" ? await verifyVideoPixels(device,video) : undefined;
-        return {title,frames:count,foveation,mediaSeconds:video?.currentTime,headSweep:sweep?.result(),changedRGB,verifiedLayerImages:inspections.length};
+        const stereoReference=await Promise.all(videoSamples);
+        if(inspectError) throw inspectError;
+        if(operation==="textureVideo" && stereoReference.length!==2) throw Error("Missing timed stereo video references");
+        return {title,frames:count,foveation,mediaSeconds:video?.currentTime,headSweep:sweep?.result(),stereoReference,verifiedLayerImages:inspections.length};
     } finally {
         active = false;
         if (select) session.removeEventListener("select",select);

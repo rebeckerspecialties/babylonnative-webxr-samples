@@ -42,7 +42,31 @@ runner separately releases the activity after its last session rather than leavi
 over Home. On the [hosted Release renderer](https://github.com/rebeckerspecialties/babylonnative-webxr-samples/actions/runs/45283507108),
 combined foveation, motion/depth and direct media delivered 141/143/142 app callbacks in four
 seconds. Three subsequent eight-second streaming-video runs delivered 453/456/468 callbacks with
-changed RGB in both eye regions. Debug-renderer results are not comparable to these Release figures.
+changed RGB in both eye regions, but those frames were corrupt. A clock or changing bytes
+is insufficient to qualify the video. Debug-renderer results are not comparable to these Release figures.
+
+### Cube orientation and texture video (Quest 1)
+
+The [cube display capture](qualification/quest-1/cube-faces.jpg) shows an upright shop.
+The APK gate compares all six faces (including their edges) against the original strip
+after the same full-width reflection applied by the upstream sample.
+
+The [old texture capture](qualification/quest-1/rejected-green-film.jpg) showed green bands
+although the independent direct media surface played the clip normally. The
+[corrected capture](qualification/quest-1/stereo-film.png) uses linear MediaCodec output images,
+and presents the 16:9-per-eye film on a bounded equirect patch instead of stretching it over 360 degrees.
+With `python3 android/test-layers.py --capture RESULTS SERIAL 6 10 36 104`, texture video produced
+1,056 / 1,062 callbacks per 15 s (default / maximum foveation). In the actual packed layer texture at
+12.5 s and 13.5 s, per-eye mean absolute channel error was 0.25-0.30/255 and disparity correlation
+was above 0.999 against independent FFmpeg decoding. The separate direct equirect media,
+foveation and space-warp case submitted 144 callbacks in four seconds with motion and depth.
+The reference generator is `python3 tools/video-reference.py`; the encoded source remains unchanged.
+
+Cases 105/106 add distinct color markers *after* reading the unmodified movie pixels,
+only in qualification mode. The external [display capture at maximum foveation](qualification/quest-1/identified-film-max-foveation.jpg)
+has magenta only in the left eye, cyan only in the right. Both default and maximum
+foveation passed the display check. Repeat with `--capture RESULTS SERIAL 105 106`
+and `python3 android/check-video-display.py --markers RESULTS/02-case-106.png`.
 
 The unmodified [CI APK at 3e9719c](https://github.com/rebeckerspecialties/babylonnative-webxr-samples/actions/runs/45160177937)
 passed the 14 default Android layer checks on the Quest. To run the suite on another headset:

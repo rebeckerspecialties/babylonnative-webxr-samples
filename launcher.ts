@@ -51,7 +51,9 @@ async function prepareLauncher() {
             const index=(page-3)%26, foveation=page>=29?1:null;
             try {
                 console.info("XR check begin", page);
-                const result=page===101 ? await densityPixels(session,device,space) : page>=100 ? await warpFrames(session,device,space,["Quad","Cylinder","Equirect"][page-102]) : index<22 ? await exerciseLayer(layerCases[index%11],session,device,space,
+                const result=page===105 || page===106 ? await exerciseLayer(layerCases.find(c=>c[2]==="textureVideo"),session,device,
+                    await inspectionSpace(session,space),"app:///Scripts/layer-images/",page===106?1:null,false,15000,true) :
+                    page===101 ? await densityPixels(session,device,space) : page>=100 ? await warpFrames(session,device,space,["Quad","Cylinder","Equirect"][page-102]) : index<22 ? await exerciseLayer(layerCases[index%11],session,device,await inspectionSpace(session,space),
                     "app:///Scripts/layer-images/",foveation,index>=11) :
                     await projectionPixels(session,device,space,index>=24,index%2!==0,foveation);
                 console.info("XR layer submitted", JSON.stringify(result));
