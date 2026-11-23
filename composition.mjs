@@ -9,6 +9,35 @@ export function uploadPackedVideo(queue,video,left,right) {
         throw Error("Top/bottom video layout does not match the two reported eye viewports");
     queue.copyExternalImageToTexture({source:video},{texture:left.colorTexture,origin:[a.x,a.y,slice]},[a.width,2*a.height]);
 }
+async function verifyVideoPixels(device, video) {
+    const w=video.videoWidth, h=video.videoHeight;
+    const texture=device.createTexture({size:[w,h],format:"rgba8unorm",
+        usage:GPUTextureUsage.COPY_DST|GPUTextureUsage.COPY_SRC|GPUTextureUsage.RENDER_ATTACHMENT});
+    const grid=4, eyeBytes=grid*grid*4;
+    const read=device.createBuffer({size:2*eyeBytes,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});
+    try {
+        async function sample() {
+            device.queue.copyExternalImageToTexture({source:video},{texture},[w,h]);
+            const enc=device.createCommandEncoder();
+            for(let i=0;i<grid*grid*2;i++) {
+                const x=Math.floor((i%grid+0.5)*w/grid);
+                const y=Math.floor((Math.floor(i/grid)+0.5)*h/(2*grid));
+                enc.copyTextureToBuffer({texture,origin:[x,y]}, {buffer:read,offset:i*4}, [1,1]);
+            }
+            device.queue.submit([enc.finish()]);
+            await bounded(read.mapAsync(GPUMapMode.READ),5000,"Video RGBA readback timed out");
+            try {return new Uint8Array(read.getMappedRange()).slice();}
+            finally {read.unmap();}
+        }
+        const before=await sample();
+        await new Promise(resolve=>setTimeout(resolve,800));
+        const after=await sample();
+        const changed=[0,1].map(eye=>after.subarray(eye*eyeBytes,(eye+1)*eyeBytes).reduce(
+            (n,c,i)=>n+(i%4!==3 && Math.abs(c-before[eye*eyeBytes+i])>=4 ? 1 : 0),0));
+        if(changed.some(n=>n===0)) throw Error("Video clock advanced without changing RGB pixels in both packed eye regions: "+changed);
+        return changed;
+    } finally {read.destroy();texture.destroy();}
+}
 // Browser and native use the same binding. Never draw a mesh as a stand-in for a compositor layer.
 const assets = {Quad:"rect-mono.png", Cylinder:"rect-mono.png", Equirect:"mono_equirect_test.png", Cube:"mono_cube_map.png"};
 export const layerCases = [
@@ -149,7 +178,8 @@ export async function exerciseLayer(entry, session, device, space, baseURL, fove
             try { session.updateRenderState({layers:requested}); } catch(e) { error = e; }
             if (error?.name !== "InvalidStateError") throw Error("Destroyed layer was not rejected with InvalidStateError");
         }
-        return {title,frames:count,foveation,mediaSeconds:video?.currentTime,headSweep:sweep?.result()};
+        const changedRGB=operation==="textureVideo" ? await verifyVideoPixels(device,video) : undefined;
+        return {title,frames:count,foveation,mediaSeconds:video?.currentTime,headSweep:sweep?.result(),changedRGB};
     } finally {
         active = false;
         if (select) session.removeEventListener("select",select);
