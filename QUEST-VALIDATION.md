@@ -23,6 +23,23 @@ combined sequence delivered 382 callbacks in eight seconds; three consecutive
 repeats after a quad warp run delivered 549/552/552. Both eye regions changed
 in all four runs. The transition variance remains unexplained.
 
+The interactive Run path in the [Release qualification APK at 0d89aee](https://github.com/rebeckerspecialties/babylonnative-webxr-samples/actions/runs/45286200180)
+displayed the upstream photograph in both eyes for both the [quad](qualification/quest-1/interactive-quad.png)
+and [cylinder](qualification/quest-1/interactive-cylinder.png). These are unmodified Android display captures
+from the Quest, not pre-composition texture readbacks. Each run also verified four texels on the actual
+layer subimage and returned to the selector (1,074 and 1,085 callbacks in the 16-second inspection,
+respectively). The launcher anchors the layer once to the user's Run pose, so it starts in front
+of the headset without following subsequent head movements. An initial successful upload or an
+increasing frame count alone does not test visible placement.
+
+To repeat through the same Run handler, start `.SampleActivity` with `--ei inspectImage 3` (quad)
+or `--ei inspectImage 4` (cylinder). Capture the display during the inspection. The automated batch
+runner separately releases the activity after its last session rather than leaving an empty activity
+over Home. On the [hosted Release renderer](https://github.com/rebeckerspecialties/babylonnative-webxr-samples/actions/runs/45283507108),
+combined foveation, motion/depth and direct media delivered 141/143/142 app callbacks in four
+seconds. Three subsequent eight-second streaming-video runs delivered 453/456/468 callbacks with
+changed RGB in both eye regions. Debug-renderer results are not comparable to these Release figures.
+
 The unmodified [CI APK at 3e9719c](https://github.com/rebeckerspecialties/babylonnative-webxr-samples/actions/runs/45160177937)
 passed the 14 default Android layer checks on the Quest. To run the suite on another headset:
 `python3 android/test-layers.py SERIAL`. For just the projection silhouettes, use
