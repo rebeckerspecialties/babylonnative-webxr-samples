@@ -127,7 +127,7 @@ async function prepareLauncher() {
                 if (page === 119) {
                     if (session.environmentBlendMode !== "alpha-blend" || session.interactionMode !== "world-space")
                         throw Error("Incorrect AR headset blend or interaction mode");
-                    await bounded(new Promise((ok, fail) => {
+                    const frames = await bounded(new Promise((ok, fail) => {
                         let first, frames = 0;
                         function tick(t, frame) {
                             try {
@@ -142,6 +142,40 @@ async function prepareLauncher() {
                         session.requestAnimationFrame(tick);
                     }), 30000, "No 20-second tracked AR marker window");
                     console.info("XR passthrough foreground submitted");
+                    console.info("XR layer submitted", JSON.stringify({frames}));
+                    continue;
+                }
+                if (page === 120) {
+                    const frames = await bounded(new Promise((ok, fail) => {
+                        let previous, count = 0;
+                        function tick(_, frame) {
+                            try {
+                                clearForeground(frame, base, true);
+                                const source = Array.from(session.inputSources).find(s => s.gamepad);
+                                if (!source) { previous = undefined; count = 0; }
+                                else {
+                                    const {gamepad, targetRaySpace, gripSpace} = source;
+                                    const {axes, buttons} = gamepad;
+                                    if (!Object.isFrozen(axes) || !Object.isFrozen(buttons)) throw Error("Mutable gamepad arrays");
+                                    const axisValues = JSON.stringify(axes);
+                                    const buttonValues = JSON.stringify(buttons.map(b=>[b.pressed,b.touched,b.value]));
+                                    if (source === previous?.source) {
+                                        if (gamepad !== previous.gamepad || targetRaySpace !== previous.targetRaySpace || gripSpace !== previous.gripSpace)
+                                            throw Error("Unchanged input source lost its gamepad or space identity");
+                                        const sameAxes = axisValues === previous.axisValues;
+                                        const sameButtons = buttonValues === previous.buttonValues;
+                                        if (sameAxes !== (axes === previous.axes) || sameButtons !== (buttons === previous.buttons))
+                                            throw Error("Gamepad array identity disagrees with snapshot values");
+                                        if (sameAxes && sameButtons && ++count === 72) { ok(count); return; }
+                                    } else count = 0;
+                                    previous = {source, gamepad, targetRaySpace, gripSpace, axes, buttons, axisValues, buttonValues};
+                                }
+                                session.requestAnimationFrame(tick);
+                            } catch (e) { fail(e); }
+                        }
+                        session.requestAnimationFrame(tick);
+                    }), 15000, "Need a connected controller with 72 unchanged input snapshots");
+                    console.info("XR layer submitted", JSON.stringify({frames}));
                     continue;
                 }
                 const checkAlpha = async () => {
