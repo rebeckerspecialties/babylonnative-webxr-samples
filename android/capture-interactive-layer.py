@@ -1,11 +1,13 @@
 """Capture the real Babylon controller/HUD over an active layer, before returning to the menu."""
 import argparse
+import json
 from pathlib import Path
 import subprocess
 import time
+from layer_pacing import require_pacing
 
 
-def capture(serial, page, output, reference_grip, disable_recorder):
+def capture(serial, page, output, reference_grip, disable_recorder, pacing):
     adb = ["adb", "-s", serial]
     package = "com.rebeckerspecialties.xrsamples"
     subprocess.run(adb + ["shell", "am", "start", "-S", "-W", "-n", package + "/.SampleActivity",
@@ -40,7 +42,10 @@ def capture(serial, page, output, reference_grip, disable_recorder):
             captured = True
         if (captured or output is None) and "XR image inspection returned" in log:
             print(next(line for line in log.splitlines() if "XR inspection command recorder" in line))
-            print(next(line for line in log.splitlines() if "XR layer submitted" in line))
+            line=next(line for line in log.splitlines() if "XR layer submitted " in line)
+            print(line)
+            if pacing:
+                require_pacing(json.loads(line.split("XR layer submitted ",1)[1]), 72 if page < 10 else 60)
             return
         time.sleep(.25)
     raise TimeoutError("No captured interactive run with a clean return to the menu")
@@ -52,9 +57,12 @@ if __name__ == "__main__":
     p.add_argument("page", type=int, choices=[3,4,5,6,10,11,12,13])
     p.add_argument("output", nargs="?", type=Path)
     p.add_argument("--timing-only", action="store_true", help="Keep the real foreground but do not take a display capture")
+    p.add_argument("--pacing", action="store_true", help="Fail on short runs, wrong display rate or any steady missed refresh")
     p.add_argument("--disable-recorder", action="store_true", help="Matched control for the engine command recorder")
     p.add_argument("--reference-grip", action="store_true", help="Also draw the actual grip asset at a fixed test pose")
     args = p.parse_args()
     if (args.output is None) != args.timing_only:
         p.error("provide either a screenshot path or --timing-only")
-    capture(args.serial, args.page, args.output, args.reference_grip, args.disable_recorder)
+    if args.pacing and not args.timing_only:
+        p.error("--pacing requires --timing-only")
+    capture(args.serial, args.page, args.output, args.reference_grip, args.disable_recorder, args.pacing)

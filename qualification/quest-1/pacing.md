@@ -47,3 +47,7 @@ Same physical headset, active Babylon scene, pointer and FPS HUD, no screenshot,
 | off | true | Media equirect | 59.72 | 5 | 7.50 |
 
 Final local qualification APK SHA-256: `40615eabdfefbb08f2e5dc6f1f877a180e4726d0c06d1da21efd86bee312bf32` (local debug signature). Stereo projection cases 25-28, cube 118, film markers 105/106 and foreground controls 107/108 passed on that APK. Both original cube atlases also matched every packaged texel independently (six and twelve faces).
+
+A repeat on that APK with no device-side liveness polls missed **1/1/8/3** refreshes in movie cases 111-114 respectively; longest unbroken spans were **30.58/25.56/27.05/22.43 s**. Stereo quad 115 missed one, leaving **14.82 s** clean in 18.01 s. These runs fail the strict full-window gate. Use `--timing-only --pacing` on the interactive runner to enforce the same rule.
+
+Rejected experiment: making the interactive layer listen to Babylon's existing frame observable instead of scheduling its own XR callback did not resolve texture-video stalls (12 and 23 missed refreshes in two 30/60 attempts; worst gap 83.34 ms). The original callback ownership and APK were restored. A clean clone of the public sample and both gitlinks reproduced the launcher's SHA-256 `a661c8645f86a5350db72666718287dd0fb7f83cfcc922ea3f87332c296e517f`.

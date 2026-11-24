@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from layer_pacing import require_pacing
 
 
 def release_test_process(adb, package, launched_pid, pidof, run=subprocess.run):
@@ -44,12 +45,7 @@ def verify(lines, pid, expected, pacing=False):
             if active is None or not data["frames"]:
                 raise RuntimeError(line)
             if pacing:
-                target = pacing_target(active)
-                duration = data.get("steadyMs", 0)
-                if (data.get("displayHz") != target or duration < 15000 or
-                        data.get("missedRefreshes") != 0 or
-                        data.get("steadyIntervals", 0) * 1000 < (target - 0.5) * duration):
-                    raise RuntimeError("Pacing gate failed: " + line)
+                require_pacing(data, pacing_target(active))
             complete.append(active)
             active = None
         if "XR layer sequence finished" in line:
