@@ -26,6 +26,8 @@ def capture(serial, page, output, reference_grip):
                 raise RuntimeError("Missed the active layer")
             with output.open("wb") as dest:
                 subprocess.run(adb + ["exec-out", "screencap", "-p"], stdout=dest, check=True, timeout=12)
+            poses = [line for line in log.splitlines() if "XR inspection grip in viewer space" in line]
+            print(poses[-1] if poses else "No grip pose sample")
             captured = True
         if captured and "XR image inspection returned" in log:
             print(next(line for line in log.splitlines() if "XR layer submitted" in line))

@@ -227,6 +227,18 @@ async function prepareLauncher() {
         if (globalThis.webxrInspectImage === true) {
             globalThis.webxrInspectImage=false;
             const manager=xr.baseExperience.sessionManager;
+            const viewer=await manager.session.requestReferenceSpace("viewer");
+            let lastGripSample=-Infinity;
+            const gripProbe=manager.onXRFrameObservable.add(frame=>{
+                const now=manager.currentTimestamp;
+                if(now-lastGripSample<500) return;
+                lastGripSample=now;
+                const grips=Array.from(frame.session.inputSources,source=>{
+                    const p=source.gripSpace && frame.getPose(source.gripSpace,viewer)?.transform.position;
+                    return [source.handedness,p ? [p.x,p.y,p.z].map(n=>Number(n.toFixed(3))) : null];
+                });
+                console.info("XR inspection grip in viewer space",JSON.stringify(grips));
+            });
             // Device pixel fixture only: exercise the real grip glTF/material with
             // a repeatable pose, independently of whether a controller is awake.
             let referenceGrip;
@@ -244,7 +256,7 @@ async function prepareLauncher() {
                     manager.onXRFrameObservable.remove(ob); resolve(true);
                 });
             }),5000,"No tracked menu frame");
-            try {await run();} finally {referenceGrip?.dispose(false,true);}
+            try {await run();} finally {manager.onXRFrameObservable.remove(gripProbe);referenceGrip?.dispose(false,true);}
             if (status !== "Layer image pixels verified" && !status.startsWith("Submitted:")) throw Error("Menu layer inspection failed: "+status);
             console.info("XR image inspection returned", titles[page]);
         }

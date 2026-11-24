@@ -120,3 +120,7 @@ The panorama run with the live controller averaged 62.9 FPS. Texture-video
 repeats ranged from 29.8 to 39.3 FPS; the one-second HUD will differ from the
 whole-run mean. In the fixed-pose run, both decoded eyes were within 0.30/255
 mean absolute RGB error of the independent film reference at 12.5 and 13.5 s.
+The inspection-only capture script also prints the latest grip position in
+viewer space. On a later texture-video run it recorded `[]` before and after
+the capture: there was no live input source to draw. Distinguish this from a
+tracked grip being occluded and from the deterministic fixed-pose control.
