@@ -7,7 +7,7 @@ def launcher = customMenu ? file(customMenu) : new File(source, 'build/launcher'
 def buildMenu = tasks.register('buildPublicMenu', Exec) {
     onlyIf { !customMenu }
     workingDir source
-    inputs.files(['composition.mjs','gripModel.mjs','headMotion.mjs','menuRay.mjs','projectionPixels.mjs','spaceWarp.mjs','densityPixels.mjs'].collect { new File(source, it) })
+    inputs.files(['composition.mjs','gripModel.mjs','headMotion.mjs','launcherInputProfiles.mjs','menuRay.mjs','projectionPixels.mjs','spaceWarp.mjs','densityPixels.mjs'].collect { new File(source, it) })
     inputs.files(new File(source, 'launcher.ts'), new File(source, 'launcher.html'), new File(source, 'publicMenu.ts'), new File(source, 'package-lock.json'), new File(source, 'buildLauncher.cjs'))
     inputs.file(new File(source, 'spatial.ts'))
     inputs.file(new File(source, 'videoReference.mjs'))

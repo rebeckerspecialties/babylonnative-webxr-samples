@@ -1,5 +1,6 @@
 import { showMenu } from "sample-menu";
 import { attachGripModel } from "./gripModel.mjs";
+import { registerLauncherInputProfiles } from "./launcherInputProfiles.mjs";
 import { attachFrameRateHud } from "./frameRateHud";
 import { bounded, exerciseLayer, inspectionSpace, layerCases, requestFilmRate, stereoImageCases } from "./composition.mjs";
 import { projectionPixels } from "./projectionPixels.mjs";
@@ -218,6 +219,7 @@ async function prepareLauncher() {
     scene.useRightHandedSystem = true;
     new HemisphericLight("controller light", Vector3.Up(), scene);
     scene.activeCamera = new FreeCamera("viewer", Vector3.Zero(), scene);
+    registerLauncherInputProfiles();
     const xr = await WebXRDefaultExperience.CreateAsync(scene, {
         // The selector handles XR select rays; it has no near-pickable content.
         disableDefaultUI: true, disableTeleportation: true, disableNearInteraction: true,
@@ -233,6 +235,11 @@ async function prepareLauncher() {
     }
     async function attachController(controller) {
         const manager = xr.baseExperience.sessionManager;
+        if (globalThis.webxrHoverSweep === true) {
+            const reportProfile = profile => console.info("XR launcher input profile", controller.inputSource.handedness, profile.profileId, profile.getMainComponent().id);
+            if (controller.motionController) reportProfile(controller.motionController);
+            else controller.onMotionControllerInitObservable.addOnce(reportProfile);
+        }
         await attachGripModel(controller, loadGrip, manager.onXRFrameObservable, () => manager.referenceSpace);
     }
     xr.input.onControllerAddedObservable.add(c => attachController(c).catch(report));
