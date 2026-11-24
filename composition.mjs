@@ -18,6 +18,35 @@ export function uploadPackedVideo(queue,video,left,right) {
         throw Error("Top/bottom video layout does not match the two reported eye viewports");
     queue.copyExternalImageToTexture({source:video},{texture:left.colorTexture,origin:[a.x,a.y,slice]},[a.width,2*a.height]);
 }
+
+// This packaged CFR clip has its first video PTS at 70 ms and 30 frames/s.
+// Prefer decoder notifications; use its known timeline on older video elements.
+export function filmFrames(video, fps=30, firstPTS=.070) {
+    let token=0, callback, previous;
+    const notified=typeof video.requestVideoFrameCallback==="function" && typeof video.cancelVideoFrameCallback==="function";
+    const schedule=()=>{callback=video.requestVideoFrameCallback((_,metadata)=>{token=metadata.presentedFrames; schedule();});};
+    if(notified) schedule();
+    return {
+        changed(time) {
+            const current=notified ? token : Math.max(0,Math.floor((time-firstPTS)*fps+1e-6));
+            if(previous===current) return false;
+            previous=current;
+            return true;
+        },
+        close(){ if(notified) video.cancelVideoFrameCallback(callback); },
+    };
+}
+
+export async function requestFilmRate(session, rate) {
+    await session.updateTargetFrameRate(rate);
+    // Acceptance precedes the OpenXR rate-change event. Do not start another
+    // sample (or another restore request) based on the old nominal rate.
+    for(let i=0;i<120;i++) {
+        await bounded(new Promise(resolve=>session.requestAnimationFrame(resolve)),2000,"No XR frame during refresh change");
+        if(session.frameRate===rate) return;
+    }
+    throw Error("Display did not switch to "+rate+" Hz");
+}
 // The source clip is stereo 16:9 film, not a 360-degree panorama. Preserve its
 // pixel aspect on a bounded patch of the equirect layer rather than magnifying a sky pixel.
 export function videoAngles(width, eyeHeight) {
@@ -127,7 +156,7 @@ async function inspectRect(device,sub) {
         finally {read.unmap();}
     } finally {read.destroy();}
 }
-export async function exerciseLayer(entry, session, device, space, baseURL, foveation, moving = false, duration=8000, identifyEyes=false, drawForeground) {
+export async function exerciseLayer(entry, session, device, space, baseURL, foveation, moving = false, duration=8000, identifyEyes=false, drawForeground, {verifyFilmPixels=true, filmFPS=30}={}) {
     const [title,kinds,operation] = entry;
     const original = Array.from(session.renderState.layers);
     const projection = original.find(layer => layer instanceof XRProjectionLayer);
@@ -141,7 +170,13 @@ export async function exerciseLayer(entry, session, device, space, baseURL, fove
     const owned = [];
     const useVideo = media || operation === "textureVideo";
     let video, changed = false, foveationChanged = false, active = true, select;
+    let film, uploads=0;
+    const initialRate=session.frameRate;
+    const targetRate=filmFPS===24 ? 72 : 60;
+    const matchFilm=useVideo && initialRate>0 && initialRate!==targetRate && session.supportedFrameRates?.includes(targetRate) && typeof session.updateTargetFrameRate==="function";
+    let rateChanged=false;
     try {
+        if(matchFilm) { rateChanged=true; await requestFilmRate(session,targetRate); }
         if (foveation !== null) {
             if (oldFoveation == null) throw Error("Projection fixed foveation unsupported");
             projection.fixedFoveation = foveation;
@@ -151,8 +186,9 @@ export async function exerciseLayer(entry, session, device, space, baseURL, fove
         if (useVideo) {
             video = document.createElement("video");
             video.crossOrigin = "anonymous"; video.loop = true; video.muted = true; video.playsInline = true;
-            video.src = baseURL + "bbb-sunflower-540p2-1min.webm";
+            video.src = baseURL + (filmFPS===24 ? "bbb-stereo-24fps.webm" : "bbb-sunflower-540p2-1min.webm");
             await bounded(video.play(),15000,"Media did not start");
+            if(!media) film=filmFrames(video,filmFPS,filmFPS===24 ? .087 : .070);
         }
         for (const [i,kind] of kinds.entries()) {
             const transform = new XRRigidTransform({x:kinds.length===1 ? 0 : i-0.5,y:0,z:kind==="Quad"?-2:0});
@@ -167,7 +203,7 @@ export async function exerciseLayer(entry, session, device, space, baseURL, fove
             if (kind==="Equirect" && useVideo) Object.assign(options,videoAngles(width,height));
             if (!media) Object.assign(options,{colorFormat:gpu.getPreferredColorFormat(),viewPixelWidth:width,viewPixelHeight:height,
                 isStatic:!useVideo,textureUsage:GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_DST |
-                    (useVideo || assets[kind]==="rect-mono.png" ? GPUTextureUsage.COPY_SRC : 0)});
+                    ((useVideo ? verifyFilmPixels : assets[kind]==="rect-mono.png") ? GPUTextureUsage.COPY_SRC : 0)});
             const layer = media ? factory["create"+kind+"Layer"](video,options) : factory["create"+kind+"Layer"](options);
             owned.push({layer,image,width,height,kind});
         }
@@ -175,7 +211,7 @@ export async function exerciseLayer(entry, session, device, space, baseURL, fove
         let requested = insertBackgrounds(original,projection,layers);
         session.updateRenderState({layers:requested}); changed = true;
         let firstTime, videoTime, count = 0;
-        const cadence = new XRFrameRate();
+        const cadence = new XRFrameRate(session.frameRate);
         let selected = false, pendingSelection;
         if (operation === "select") {
             // Two adjacent, world-fixed half-metre panels. Input is the event's aim, never the grip.
@@ -194,7 +230,7 @@ export async function exerciseLayer(entry, session, device, space, baseURL, fove
         const inspections = [];
         const videoSamples=[];
         let eyeMarkers;
-        if (operation==="textureVideo") duration=Math.max(duration,15000);
+        if (operation==="textureVideo") duration=Math.max(duration,15000*30/filmFPS);
         let inspectError;
         const sweep = moving ? trackHeadSweep() : null;
         await bounded(new Promise((resolve,reject) => {
@@ -209,16 +245,24 @@ export async function exerciseLayer(entry, session, device, space, baseURL, fove
                     if (drawForeground) drawForeground(xr,projection);
                     if (sweep) sweep.observe(xr.getViewerPose(space));
                     if (useVideo) videoTime ??= video.currentTime;
+                    const movieTime=film ? video.currentTime : 0;
+                    const newFrame=film?.changed(movieTime);
                     for (const item of owned) {
                         if (media || !requested.includes(item.layer) || (!useVideo && !item.layer.needsRedraw)) continue;
+                        // Leave the last released image with the compositor; never acquire
+                        // a rotating destination and then skip writing its pixels.
+                        if(useVideo && !newFrame && item.uploaded) continue;
                         const faces = item.kind === "Cube" ? 6 : 1;
-                        device.pushErrorScope("validation");
+                        const scoped=!useVideo || verifyFilmPixels;
+                        if(scoped) device.pushErrorScope("validation");
                         try { if(useVideo) {
-                            const left=gpu.getSubImage(item.layer,xr,"left"), now=video.currentTime;
+                            const left=gpu.getSubImage(item.layer,xr,"left"), now=movieTime;
                             const right=gpu.getSubImage(item.layer,xr,"right");
                             uploadPackedVideo(device.queue,item.image,left,right);
-                            if(videoSamples.length<2 && now>=12.5+videoSamples.length) {
-                                videoSamples.push(inspectVideo(device,left,now).catch(e=>{inspectError=e;}));
+                            uploads++;
+                            const referenceTime=now*filmFPS/30;
+                            if(verifyFilmPixels && videoSamples.length<2 && referenceTime>=12.5+videoSamples.length) {
+                                videoSamples.push(inspectVideo(device,left,referenceTime).catch(e=>{inspectError=e;}));
                             }
                             if (identifyEyes) {
                                 // Qualification only: the clean texture read above is ordered before
@@ -242,7 +286,7 @@ export async function exerciseLayer(entry, session, device, space, baseURL, fove
                             if (!item.uploaded && assets[item.kind]==="rect-mono.png")
                                 inspections.push(inspectRect(device,sub).catch(e=>{inspectError=e;}));
                         } }
-                        finally { validation.push(device.popErrorScope()); }
+                        finally { if(scoped) validation.push(device.popErrorScope()); }
                         item.uploaded = true;
                     }
                     if (++count === 1) console.info("XR displaying layer",title);
@@ -257,8 +301,9 @@ export async function exerciseLayer(entry, session, device, space, baseURL, fove
                         return;
                     }
                     if (performance.now()-firstTime < duration || (select && !selected) || (sweep && sweep.result().degrees < 15)) { session.requestAnimationFrame(frame); return; }
-                    if (useVideo && !(video.currentTime !== videoTime && video.readyState >= 2) || !media && owned.some(item=>!item.uploaded))
-                        throw Error(media ? "No decoded video advance" : "No redraw/upload");
+                    if (useVideo && !(video.currentTime !== videoTime && video.readyState >= 2))
+                        throw Error("No video advance: start="+videoTime+" end="+video.currentTime+" readyState="+video.readyState+" uploads="+uploads);
+                    if (!media && owned.some(item=>!item.uploaded)) throw Error("No redraw/upload");
                     resolve();
                 } catch(e) { reject(e); }
             };
@@ -276,8 +321,9 @@ export async function exerciseLayer(entry, session, device, space, baseURL, fove
         }
         const stereoReference=await Promise.all(videoSamples);
         if(inspectError) throw inspectError;
-        if(operation==="textureVideo" && stereoReference.length!==2) throw Error("Missing timed stereo video references");
-        return {title,frames:count,fps:cadence.average,foveation,mediaSeconds:video?.currentTime,headSweep:sweep?.result(),stereoReference,verifiedLayerImages:inspections.length};
+        if(operation==="textureVideo" && verifyFilmPixels && stereoReference.length!==2) throw Error("Missing timed stereo video references");
+        return {title,frames:count,fps:cadence.average,displayHz:session.frameRate,steadyIntervals:cadence.steadyIntervals,
+            missedRefreshes:cadence.missed,maxGapMs:cadence.maxGapMs,foveation,uploads,mediaSeconds:video?.currentTime,headSweep:sweep?.result(),stereoReference,verifiedLayerImages:inspections.length};
     } finally {
         active = false;
         if (select) session.removeEventListener("select",select);
@@ -287,9 +333,11 @@ export async function exerciseLayer(entry, session, device, space, baseURL, fove
                 await bounded(new Promise(resolve=>session.requestAnimationFrame(resolve)),2000,"Projection restoration timed out");
             }
         } finally {
+            film?.close();
             if (foveationChanged) projection.fixedFoveation = oldFoveation;
             for (const item of owned) if (!item.destroyed) item.layer.destroy();
             if (video) { video.pause(); video.removeAttribute("src"); video.load(); }
+            if (rateChanged) await requestFilmRate(session,initialRate);
         }
     }
 }

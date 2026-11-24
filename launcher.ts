@@ -98,7 +98,11 @@ async function prepareLauncher() {
                             "app:///Scripts/layer-images/",null,false,8000,false,(f,p)=>clearForeground(f,p,true));
                     } finally {base.blendTextureSourceAlpha=true;}
                 };
-                const result=page===107 || page===108 ? await checkAlpha() : page===105 || page===106 ? await exerciseLayer(layerCases.find(c=>c[2]==="textureVideo"),session,device,
+                const result=page>=111 && page<=114 ? await exerciseLayer(layerCases.find(c=>c[2]===(page%2?"textureVideo":"media")),session,device,
+                    await inspectionSpace(session,space),"app:///Scripts/layer-images/",null,false,45000,false,clearForeground,{verifyFilmPixels:false,filmFPS:page<=112?24:30}) :
+                    page===109 || page===110 ? await exerciseLayer(layerCases.find(c=>c[2]===(page===109?"textureVideo":"media")),session,device,
+                    await inspectionSpace(session,space),"app:///Scripts/layer-images/",null,false,19000,false,clearForeground,{filmFPS:24}) :
+                    page===107 || page===108 ? await checkAlpha() : page===105 || page===106 ? await exerciseLayer(layerCases.find(c=>c[2]==="textureVideo"),session,device,
                     await inspectionSpace(session,space),"app:///Scripts/layer-images/",page===106?1:null,false,15000,true,clearForeground) :
                     page===101 ? await densityPixels(session,device,space) : page>=100 ? await warpFrames(session,device,space,["Quad","Cylinder","Equirect"][page-102]) : index<22 ? await exerciseLayer(layerCases[index%11],session,device,await inspectionSpace(session,space),
                     "app:///Scripts/layer-images/",foveation,index>=11,8000,false,clearForeground) :
@@ -194,7 +198,7 @@ async function prepareLauncher() {
                         const space=await inspectionSpace(manager.session,manager.referenceSpace);
                         menu.setVisible?.(false);
                         result = await exerciseLayer(v.entry,manager.session,engine._device,space,
-                            native ? "app:///Scripts/layer-images/" : "./layer-images/", v.foveation, v.moving,16000);
+                            native ? "app:///Scripts/layer-images/" : "./layer-images/", v.foveation, v.moving,16000,false,undefined,{verifyFilmPixels:false});
                     }
                     status = result.verifiedLayerImages ? "Layer image pixels verified" : "Submitted: " + result.frames + " frames (" + result.fps.toFixed(1) + " FPS)";
                     console.info("XR layer submitted",JSON.stringify(result));

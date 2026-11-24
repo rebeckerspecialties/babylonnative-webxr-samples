@@ -22,9 +22,10 @@ with ZipFile(sys.argv[1]) as apk:
             uri = item.get("uri", "")
             if uri and not uri.startswith("data:"):
                 apk.getinfo(str(path.parent / unquote(uri)))
-    video = apk.getinfo(str(base / "layer-images/bbb-sunflower-540p2-1min.webm"))
-    if video.compress_type != ZIP_STORED or video.file_size == 0:
-        raise ValueError("MediaPlayer requires a nonempty, uncompressed video asset")
+    for asset in ["bbb-sunflower-540p2-1min.webm", "bbb-stereo-24fps.webm"]:
+        video = apk.getinfo(str(base / "layer-images" / asset))
+        if video.compress_type != ZIP_STORED or video.file_size == 0:
+            raise ValueError(f"MediaPlayer requires a nonempty, uncompressed video asset: {asset}")
     # This fork statically links OpenXR::openxr_loader into the embedding.
     embedding = apk.read("lib/arm64-v8a/libBabylonNativeEmbedding.so")
     if not embedding.startswith(b"\x7fELF") or b"xrInitializeLoaderKHR" not in embedding:

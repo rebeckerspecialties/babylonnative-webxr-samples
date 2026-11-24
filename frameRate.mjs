@@ -3,8 +3,9 @@ export class XRFrameRate {
     reset() {
         this.first = this.last = this.windowStart = undefined;
         this.intervals = this.windowIntervals = 0;
+        this.steadyIntervals = this.missed = this.maxGapMs = 0;
     }
-    constructor() { this.reset(); }
+    constructor(displayHz=0) { this.displayHz=displayHz; this.reset(); }
     sample(time) {
         if (!Number.isFinite(time)) return;
         if (time < this.last) this.reset();
@@ -13,6 +14,12 @@ export class XRFrameRate {
             return;
         }
         if (this.last === time) return;
+        if (this.displayHz>0 && this.last-this.first>=2000) {
+            const gap=time-this.last;
+            ++this.steadyIntervals;
+            this.maxGapMs=Math.max(this.maxGapMs,gap);
+            this.missed+=Math.max(0,Math.round(gap*this.displayHz/1000)-1);
+        }
         this.last = time;
         ++this.intervals;
         ++this.windowIntervals;

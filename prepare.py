@@ -59,6 +59,12 @@ def generate(checkout, output):
                     checkout / "media/textures/mono_cube_map.png", output / "layer-images/mono_cube_map.png"], check=True)
     for asset in ("bbb-sunflower-540p2-1min.webm","ATTRIBUTION.md"):
         copyfile(checkout / "media/video" / asset, output / "layer-images" / asset)
+    # Same compressed VP8 frames at 24 rather than 30 fps. Keep attribution
+    # alongside both clips; omit audio rather than changing the audio clock.
+    subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-itsscale", "1.25",
+                    "-i", str(output / "layer-images/bbb-sunflower-540p2-1min.webm"),
+                    "-map", "0:v:0", "-c:v", "copy", "-r", "24", "-an", "-t", "22",
+                    str(output / "layer-images/bbb-stereo-24fps.webm")], check=True)
     for asset in ("controller.gltf", "controller-left.gltf", "controller.bin", "ATTRIBUTION.md"):
         copyfile(checkout / "media/gltf/controller" / asset, output / "controller" / asset)
     (pages / "vr-barebones.html").write_bytes(html)

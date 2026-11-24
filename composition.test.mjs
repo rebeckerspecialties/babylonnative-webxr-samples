@@ -1,6 +1,28 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { checkRectPixels, exerciseLayer, inspectionSpace, layerCases, requireFactories, uploadPackedVideo } from "./composition.mjs";
+import { checkRectPixels, exerciseLayer, filmFrames, inspectionSpace, layerCases, requestFilmRate, requireFactories, uploadPackedVideo } from "./composition.mjs";
+
+test("a resolved rate request is not evidence the display switched",async()=>{
+    let frames=0;
+    const session={frameRate:72,async updateTargetFrameRate(){},requestAnimationFrame(f){
+        if(++frames===3)this.frameRate=60;queueMicrotask(f);
+    }};
+    await requestFilmRate(session,60);assert.equal(frames,3);
+    await assert.rejects(requestFilmRate(session,72),/did not switch/);
+});
+
+test("duplicate displays do not acquire a new film image; seeking, looping and later frames do",()=>{
+    const film=filmFrames({});
+    assert.deepEqual([0,.070,.080,.104,.13,.137,3,.07].map(t=>film.changed(t)),[true,false,false,true,false,true,true,true]);
+    film.close();
+});
+test("decoder frame identity wins over a running clock; cancel the outstanding notification",()=>{
+    let queued, canceled, id=0;
+    const film=filmFrames({requestVideoFrameCallback(fn){queued=fn;return ++id;},cancelVideoFrameCallback(i){canceled=i;}});
+    assert.equal(film.changed(1),true);assert.equal(film.changed(2),false);
+    queued(0,{presentedFrames:1});assert.equal(film.changed(2),true);assert.equal(film.changed(2),false);
+    film.close();assert.equal(canceled,2);
+});
 
 const pixels=[5,12,8,255,125,58,26,255,42,50,44,255,80,82,59,255];
 test("image inspection rejects transparent, blank and channel-swapped uploads",()=>{
