@@ -21,7 +21,11 @@ public final class SampleActivity extends Activity {
         }
         boolean menu = getIntent().getBooleanExtra("launcher", true);
         if (menu) BabylonNative.runtimeLoadScript(runtime, "app:///Scripts/menu-entry.js");
+        if (menu && getIntent().getBooleanExtra("hoverSweep", false))
+            BabylonNative.runtimeEval(runtime, "globalThis.webxrHoverSweep=true", "app:///Scripts/hover-sweep.js");
         if (menu && getIntent().getBooleanExtra("selectionBenchmark", false)) {
+            if (getIntent().getBooleanExtra("validateDensity", false))
+                BabylonNative.runtimeLoadScript(runtime, "app:///Scripts/xr_projection_density_validation.js");
             BabylonNative.runtimeEval(runtime, "globalThis.webxrBenchmarkSpaceWarp=" + getIntent().getBooleanExtra("spaceWarp", false)
                     + ";globalThis.webxrBenchmarkTracked=" + getIntent().getBooleanExtra("trackedSelection", false),
                     "app:///Scripts/benchmark-options.js");

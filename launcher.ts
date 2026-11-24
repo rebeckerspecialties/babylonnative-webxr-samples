@@ -1,7 +1,7 @@
 import { showMenu } from "sample-menu";
 import { attachGripModel } from "./gripModel.mjs";
 import { attachFrameRateHud } from "./frameRateHud";
-import { bounded, exerciseLayer, inspectionSpace, layerCases, stereoImageCases } from "./composition.mjs";
+import { bounded, exerciseLayer, inspectionSpace, layerCases, requestFilmRate, stereoImageCases } from "./composition.mjs";
 import { projectionPixels } from "./projectionPixels.mjs";
 import { warpFrames } from "./spaceWarp.mjs";
 import { densityPixels } from "./densityPixels.mjs";
@@ -181,6 +181,11 @@ async function prepareLauncher() {
     for (const c of xr.input.controllers) attachController(c).catch(report);
     const start = async () => {
         await xr.baseExperience.enterXRAsync("immersive-vr", "local", xr.renderTarget, { requiredFeatures: ["webgpu","layers"] });
+        if (globalThis.webxrHoverSweep === true) {
+            const session = xr.baseExperience.sessionManager.session;
+            await requestFilmRate(session, 72);
+            console.info("XR launcher sweep confirmed refresh", session.frameRate);
+        }
         engine.runRenderLoop(() => scene.render());
         let busy = false;
         const variants = [null,1].flatMap(foveation=>[

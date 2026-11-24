@@ -1,5 +1,6 @@
 import { CreatePlane } from "@babylonjs/core/Meshes/Builders/planeBuilder";
-import { AdvancedDynamicTexture, TextBlock } from "@babylonjs/gui/2D";
+import { AdvancedDynamicTexture } from "@babylonjs/gui/2D/advancedDynamicTexture";
+import { TextBlock } from "@babylonjs/gui/2D/controls/textBlock";
 import { XRFrameRate } from "./frameRate.mjs";
 
 export function attachFrameRateHud(scene, xr) {
