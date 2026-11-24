@@ -8,6 +8,7 @@ rates used the hardware decoder with zero application movie uploads:
 | Movie/display | Steady seconds | Missed predicted refreshes | Longest clean |
 | --- | ---: | ---: | ---: |
 | 24/72 | 22.96 | 4 | 13.94 s |
+| 24/72 repeat | 23.01 | 24 | 3.93 s |
 | 30/60 | 22.98 | 0 | 22.98 s |
 
 An earlier 30/60 attempt missed one refresh. Profile 2 (10-bit PQ) returned
@@ -16,6 +17,18 @@ An advancing XR frame count alone would have passed the black film. Retain
 the Profile 2 fixture for other devices. These are application XR intervals,
 not measurements of compositor scan-out or the timestamp of each decoded film
 frame. See the [decoder probe](../../third_party/BabylonNative/Core/GraphicsWgpu/Tests/AndroidDecoderImport.md).
+During the 24/72 repeat, 21 one-second VrApi windows inside the two-layer
+interval had median App=3.24 ms, TW=3.27 ms, CPU&GPU=14.34 ms, GPU=46% and
+temperature=31 C. The refresh budget is 13.89 ms. Those are separate runtime
+metrics; adding them or attributing every missed callback to the GPU is invalid.
+
+In a separate app-PID CPU comparison, both pages used the same 960x1080 VP8
+24 fps film, 72 Hz display, reference grip and HUD. Starting three seconds after
+`XR displaying layer`, `simpleperf record -p PID --duration 9 -e cpu-clock -f 130`
+measured 6.285 CPU-seconds on page 11 (Surface, 817 samples), versus 8.392 on
+page 10 (texture, 1091 samples). The fallback YUV row converter accounted for
+6.51% on page 10 and had no samples on page 11. This measures the application
+process, excluding the Android decoder service and the system compositor.
 
 Physical Quest 1, Vulkan, runtime `8a3cdc02`; no driver tracing, heap sampling or screenshot during these intervals. Cases ran in order, movie source 960x1080 stereo VP8. The two 72 Hz movie rows use the packaged 24 fps remux; the two 60 Hz rows use the original 30 fps source. The 2 s warmup is excluded from **both** rate and misses. Refreshes refer to application XR predicted-display-time intervals, not inferred film frames or compositor-generated frames. Uploads cover the complete run; the direct compositor Surface is separate from texture video.
 
