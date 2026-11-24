@@ -20,12 +20,12 @@ class Pacing(unittest.TestCase):
 
     def test_rejects_missed_frames_short_intervals_wrong_rate_and_empty_evidence(self):
         import json
-        receipt = dict(frames=1200, displayHz=72, steadyMs=16000, steadyIntervals=1152, missedRefreshes=0)
+        receipt = dict(frames=1600, displayHz=72, steadyMs=20000, steadyIntervals=1440, missedRefreshes=0)
         def check(record):
             lines = ["a b 1 XR check begin 3", "a b 1 XR layer submitted " + json.dumps(record), "a b 1 XR layer sequence finished"]
             return runner["verify"]("\n".join(lines), "1", [3], True)
         self.assertTrue(check(receipt))
-        for delta in (dict(missedRefreshes=1), dict(steadyMs=14999), dict(displayHz=60), dict(steadyIntervals=0)):
+        for delta in (dict(missedRefreshes=1), dict(steadyMs=19999), dict(displayHz=60), dict(steadyIntervals=0)):
             with self.assertRaisesRegex(RuntimeError, "Pacing gate failed"):
                 check({**receipt, **delta})
 

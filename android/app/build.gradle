@@ -25,6 +25,7 @@ def generate = tasks.register('generateSample', Exec) {
     inputs.files(new File(upstream, 'css/common.css'), new File(upstream, 'favicon-32x32.png'), new File(upstream, 'favicon-96x96.png'))
     inputs.dir(new File(upstream, 'media/gltf/controller'))
     inputs.dir(new File(upstream, 'media/video'))
+    inputs.dir(new File(source, 'qualification/films'))
     inputs.dir(new File(upstream, 'media/gltf/sunflower'))
     inputs.dir(new File(upstream, 'media/gltf/reticle'))
     inputs.dir(new File(upstream, 'media/gltf/cube-room'))

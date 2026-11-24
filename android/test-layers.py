@@ -60,7 +60,7 @@ def verify(lines, pid, expected, pacing=False):
 if __name__ == "__main__":
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("serial")
-    p.add_argument("--pacing", action="store_true", help="Require at least 15 steady seconds at 60/72 Hz with zero missed predicted refreshes")
+    p.add_argument("--pacing", action="store_true", help="Require at least 20 steady seconds at 60/72 Hz with zero missed predicted refreshes")
     p.add_argument("--capture", type=Path, help="Save a display capture during each case, after the sky-only video intro")
     p.add_argument("--log", type=Path, help="Retain this run's ordinary application log, including all timing receipts")
     p.add_argument("checks", nargs="*", type=int, default=[3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 25, 26, 27, 28])

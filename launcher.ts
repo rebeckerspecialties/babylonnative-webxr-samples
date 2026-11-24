@@ -130,14 +130,14 @@ async function prepareLauncher() {
                     } finally {base.blendTextureSourceAlpha=true;}
                 };
                 const result=page>=115 && page<=118 ? await exerciseLayer(stereoImageCases[page-115],session,device,await inspectionSpace(session,space),
-                    "app:///Scripts/layer-images/",null,false,20000,false,clearForeground) : page>=111 && page<=114 ? await exerciseLayer(layerCases.find(c=>c[2]===(page%2?"textureVideo":"media")),session,device,
+                    "app:///Scripts/layer-images/",null,false,25000,false,clearForeground) : page>=111 && page<=114 ? await exerciseLayer(layerCases.find(c=>c[2]===(page%2?"textureVideo":"media")),session,device,
                     await inspectionSpace(session,space),"app:///Scripts/layer-images/",null,false,45000,false,clearForeground,{verifyFilmPixels:false,filmFPS:page<=112?24:30}) :
                     page===109 || page===110 ? await exerciseLayer(layerCases.find(c=>c[2]===(page===109?"textureVideo":"media")),session,device,
-                    await inspectionSpace(session,space),"app:///Scripts/layer-images/",null,false,19000,false,clearForeground,{filmFPS:24}) :
+                    await inspectionSpace(session,space),"app:///Scripts/layer-images/",null,false,25000,false,clearForeground,{filmFPS:24}) :
                     page===107 || page===108 ? await checkAlpha() : page===105 || page===106 ? await exerciseLayer(layerCases.find(c=>c[2]==="textureVideo"),session,device,
                     await inspectionSpace(session,space),"app:///Scripts/layer-images/",page===106?1:null,false,15000,true,clearForeground) :
                     page===101 ? await densityPixels(session,device,space) : page>=100 ? await warpFrames(session,device,space,["Quad","Cylinder","Equirect"][page-102]) : index<22 ? await exerciseLayer(layerCases[index%11],session,device,await inspectionSpace(session,space),
-                    "app:///Scripts/layer-images/",foveation,index>=11,20000,false,clearForeground) :
+                    "app:///Scripts/layer-images/",foveation,index>=11,25000,false,clearForeground) :
                     await projectionPixels(session,device,space,index>=24,index%2!==0,foveation);
                 console.info("XR layer submitted", JSON.stringify(result));
             } catch(e) {console.error("XR layer FAIL",page,e.message);}
@@ -237,7 +237,9 @@ async function prepareLauncher() {
                         const space=await inspectionSpace(manager.session,manager.referenceSpace);
                         menu.setVisible?.(false);
                         result = await exerciseLayer(v.entry,manager.session,engine._device,space,
-                            native ? "app:///Scripts/layer-images/" : "./layer-images/", v.foveation, v.moving,20000,false,undefined,{verifyFilmPixels:false});
+                            native ? "app:///Scripts/layer-images/" : "./layer-images/", v.foveation, v.moving,25000,false,undefined,
+                            {verifyFilmPixels:false,filmFPS:globalThis.webxrInspectFilmFPS ?? 30,diagnose:globalThis.webxrDiagnosePacing === true,
+                                vp9Profile:globalThis.webxrInspectVp9Profile ?? -1});
                     }
                     status = result.verifiedLayerImages ? "Layer image pixels verified" : "Submitted: " + result.frames + " frames (" + result.fps.toFixed(1) + " FPS)";
                     console.info("XR layer submitted",JSON.stringify(result));

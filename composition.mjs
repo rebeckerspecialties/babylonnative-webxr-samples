@@ -172,7 +172,13 @@ async function inspectRect(device,sub) {
         finally {read.unmap();}
     } finally {read.destroy();}
 }
-export async function exerciseLayer(entry, session, device, space, baseURL, foveation, moving = false, duration=8000, identifyEyes=false, drawForeground, {verifyFilmPixels=true, filmFPS=30}={}) {
+export function checkFilmClock(start, end, elapsed, length) {
+    const advanced = end >= start ? end-start : end+length-start;
+    if (!(elapsed > 0 && elapsed < length && Math.abs(advanced-elapsed) < 1.5))
+        throw Error("Decoder clock did not follow playback: advanced=" + advanced + "s elapsed=" + elapsed + "s");
+}
+
+export async function exerciseLayer(entry, session, device, space, baseURL, foveation, moving = false, duration=8000, identifyEyes=false, drawForeground, {verifyFilmPixels=true, filmFPS=30, diagnose=false, vp9Profile=-1}={}) {
     const [title,kinds,operation] = entry;
     const original = Array.from(session.renderState.layers);
     const projection = original.find(layer => layer instanceof XRProjectionLayer);
@@ -203,7 +209,9 @@ export async function exerciseLayer(entry, session, device, space, baseURL, fove
         if (useVideo) {
             video = document.createElement("video");
             video.crossOrigin = "anonymous"; video.loop = true; video.muted = true; video.playsInline = true;
-            video.src = baseURL + (filmFPS===24 ? "bbb-stereo-24fps.webm" : "bbb-sunflower-540p2-1min.webm");
+            if (vp9Profile >= 0 && !media) throw Error("VP9 Surface inspection must not use an app texture upload");
+            video.src = baseURL + (vp9Profile >= 0 ? (vp9Profile===2 ? "vp9-p2.webm" : filmFPS===24 ? "vp9-p0-24.webm" : "vp9-p0.webm") :
+                filmFPS===24 ? "bbb-stereo-24fps.webm" : "bbb-sunflower-540p2-1min.webm");
             await bounded(video.play(),15000,"Media did not start");
             if(!media) film=filmFrames(video,filmFPS,filmFPS===24 ? .087 : .070);
         }
@@ -229,6 +237,10 @@ export async function exerciseLayer(entry, session, device, space, baseURL, fove
         session.updateRenderState({layers:requested}); changed = true;
         let firstTime, videoTime, count = 0;
         const cadence = new XRFrameRate(session.frameRate);
+        // Store the preceding callback interval for correlation with logcat -v epoch.
+        // No per-frame log output or extra clock reads in qualification runs.
+        const timing = diagnose ? {uploadMs:0, maxUploadMs:0, windows:[]} : undefined;
+        let previousWall, previousUploadMs;
         let selected = false, pendingSelection;
         if (operation === "select") {
             // Two adjacent, world-fixed half-metre panels. Input is the event's aim, never the grip.
@@ -260,7 +272,15 @@ export async function exerciseLayer(entry, session, device, space, baseURL, fove
                     for(let i=0;i<requested.length;i++)
                         if(activeLayers[i]!==requested[i]) throw Error("Wrong ordered layers at index "+i);
                     firstTime ??= performance.now();
+                    const missedBefore=cadence.missed;
                     cadence.sample(time);
+                    if(timing) {
+                        const now=Date.now();
+                        if(cadence.missed>missedBefore && timing.windows.length<256)
+                            timing.windows.push([previousWall,now,previousUploadMs,cadence.missed-missedBefore]);
+                        previousWall=now;
+                        previousUploadMs=0;
+                    }
                     if (drawForeground) drawForeground(xr,projection);
                     if (sweep) sweep.observe(xr.getViewerPose(space));
                     if (useVideo) videoTime ??= video.currentTime;
@@ -275,9 +295,15 @@ export async function exerciseLayer(entry, session, device, space, baseURL, fove
                         const scoped=!useVideo || verifyFilmPixels;
                         if(scoped) device.pushErrorScope("validation");
                         try { if(useVideo) {
+                            const before=timing ? performance.now() : 0;
                             const left=gpu.getSubImage(item.layer,xr,"left"), now=movieTime;
                             const right=gpu.getSubImage(item.layer,xr,"right");
                             uploadPackedVideo(device.queue,item.image,left,right);
+                            if(timing) {
+                                previousUploadMs=performance.now()-before;
+                                timing.uploadMs+=previousUploadMs;
+                                timing.maxUploadMs=Math.max(timing.maxUploadMs,previousUploadMs);
+                            }
                             uploads++;
                             const referenceTime=now*filmFPS/30;
                             if(verifyFilmPixels && videoSamples.length<2 && referenceTime>=12.5+videoSamples.length) {
@@ -329,6 +355,7 @@ export async function exerciseLayer(entry, session, device, space, baseURL, fove
                     if (performance.now()-firstTime < duration || (select && !selected) || (sweep && sweep.result().degrees < 15)) { session.requestAnimationFrame(frame); return; }
                     if (useVideo && !(video.currentTime !== videoTime && video.readyState >= 2))
                         throw Error("No video advance: start="+videoTime+" end="+video.currentTime+" readyState="+video.readyState+" uploads="+uploads);
+                    if (vp9Profile >= 0) checkFilmClock(videoTime, video.currentTime, (performance.now()-firstTime)/1000, filmFPS===24 && vp9Profile===0 ? 40 : 32);
                     if (!media && owned.some(item=>!item.uploaded)) throw Error("No redraw/upload");
                     resolve();
                 } catch(e) { reject(e); }
@@ -348,6 +375,11 @@ export async function exerciseLayer(entry, session, device, space, baseURL, fove
         const stereoReference=await Promise.all(videoSamples);
         if(inspectError) throw inspectError;
         if(operation==="textureVideo" && verifyFilmPixels && stereoReference.length!==2) throw Error("Missing timed stereo video references");
+        if(timing) {
+            // Bound each log line to avoid Android truncating a large result.
+            for(let i=0;i<timing.windows.length;i+=16) console.info("XR missed intervals",JSON.stringify(timing.windows.slice(i,i+16)));
+            console.info("XR upload timing",JSON.stringify({totalMs:timing.uploadMs,maxMs:timing.maxUploadMs,uploads}));
+        }
         return {title,frames:count,fps:cadence.average,displayHz:session.frameRate,steadyIntervals:cadence.steadyIntervals,
             steadyMs:cadence.steadyMs,longestCleanMs:cadence.longestCleanMs,missedRefreshes:cadence.missed,maxGapMs:cadence.maxGapMs,foveation,uploads,mediaSeconds:video?.currentTime,headSweep:sweep?.result(),stereoReference,verifiedLayerImages:inspections.length};
     } finally {

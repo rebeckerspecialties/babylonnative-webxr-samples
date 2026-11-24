@@ -1,5 +1,22 @@
 # Quest 1, 2026-11-23: compositor layer pacing
 
+**VP9 decoder Surface, November 24.** Qualification build at native `394a1512`,
+actual controller model at a fixed reference pose and live HUD. With Profile 0,
+the red-left/blue-right display control passed separately from timing. Both
+rates used the hardware decoder with zero application movie uploads:
+
+| Movie/display | Steady seconds | Missed predicted refreshes | Longest clean |
+| --- | ---: | ---: | ---: |
+| 24/72 | 22.96 | 4 | 13.94 s |
+| 30/60 | 22.98 | 0 | 22.98 s |
+
+An earlier 30/60 attempt missed one refresh. Profile 2 (10-bit PQ) returned
+no usable picture; the final clock gate rejected 1 ms of playback over 25 s.
+An advancing XR frame count alone would have passed the black film. Retain
+the Profile 2 fixture for other devices. These are application XR intervals,
+not measurements of compositor scan-out or the timestamp of each decoded film
+frame. See the [decoder probe](../../third_party/BabylonNative/Core/GraphicsWgpu/Tests/AndroidDecoderImport.md).
+
 Physical Quest 1, Vulkan, runtime `8a3cdc02`; no driver tracing, heap sampling or screenshot during these intervals. Cases ran in order, movie source 960x1080 stereo VP8. The two 72 Hz movie rows use the packaged 24 fps remux; the two 60 Hz rows use the original 30 fps source. The 2 s warmup is excluded from **both** rate and misses. Refreshes refer to application XR predicted-display-time intervals, not inferred film frames or compositor-generated frames. Uploads cover the complete run; the direct compositor Surface is separate from texture video.
 
 | Raw case | Hz | Steady s | FPS | Misses | Longest clean s | Worst ms | Movie uploads |

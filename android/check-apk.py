@@ -24,7 +24,8 @@ with ZipFile(sys.argv[1]) as apk:
             uri = item.get("uri", "")
             if uri and not uri.startswith("data:"):
                 apk.getinfo(str(path.parent / unquote(uri)))
-    for asset in ["bbb-sunflower-540p2-1min.webm", "bbb-stereo-24fps.webm"]:
+    for asset in ["bbb-sunflower-540p2-1min.webm", "bbb-stereo-24fps.webm",
+                  "vp9-p0.webm", "vp9-p0-24.webm", "vp9-p2.webm"]:
         video = apk.getinfo(str(base / "layer-images" / asset))
         if video.compress_type != ZIP_STORED or video.file_size == 0:
             raise ValueError(f"MediaPlayer requires a nonempty, uncompressed video asset: {asset}")

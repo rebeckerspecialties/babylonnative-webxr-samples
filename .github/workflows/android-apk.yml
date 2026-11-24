@@ -1,7 +1,7 @@
 name: Build WebXR sample APK
 on:
   push:
-    branches: [main, android/compositor-layers]
+    branches: [main, android/compositor-layers, review/streaming-video-pixels]
   workflow_dispatch:
   workflow_call:
     inputs:
