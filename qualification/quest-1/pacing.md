@@ -1,5 +1,23 @@
 # Quest 1, 2026-11-23: compositor layer pacing
 
+**Grip draw-count control, November 24.** Same APK, tracking, HUD, PBR lighting and
+340 source triangles. Eight source primitives vs one with linear vertex colors.
+Each eye's fixed-pose controller region averaged <0.5/255 channel difference.
+Run `android/capture-interactive-layer.py SERIAL PAGE --reference-grip --local`
+with a screenshot path for pixels, or `--timing-only` for timing. Toggle
+`--single-draw-grip`; use page 3 for stills and 11 with `--vp9-profile 0 --film-fps 24|30`
+for hardware-decoded film. The default remains the unmodified reference glTF.
+
+| Movie / display | Source / packed: XR misses (~23 s) | VrApi stale (21 middle reports) | Median App ms | Median CPU&GPU ms |
+| --- | ---: | ---: | ---: | ---: |
+| 24 / 72 | 4 / 6 | 16 / 13 | 2.15 / 2.12 | 10.82 / 9.00 |
+| 30 / 60 | 3 / 0 | 5 / 3 | 2.08 / 2.06 | 10.19 / 9.14 |
+
+All four runs had zero application movie uploads and reported CPU/GPU levels 2/2
+and 1651/414 MHz in the median window. The still control/packed/control missed
+24/5/1 predicted refreshes. Fewer draws and a lower median combined time did not
+eliminate compositor misses. Do not infer tile spills or memory bandwidth from these timings.
+
 **VP9 decoder Surface, November 24.** Qualification build at native `394a1512`,
 actual controller model at a fixed reference pose and live HUD. With Profile 0,
 the red-left/blue-right display control passed separately from timing. Both

@@ -5,6 +5,7 @@ from html.parser import HTMLParser
 from pathlib import Path
 from shutil import copyfile, copytree, ignore_patterns
 import subprocess
+from tools.batch_grip import batch_grip
 
 
 class Module(HTMLParser):
@@ -70,6 +71,8 @@ def generate(checkout, output):
                     str(output / "layer-images/bbb-stereo-24fps.webm")], check=True)
     for asset in ("controller.gltf", "controller-left.gltf", "controller.bin", "ATTRIBUTION.md"):
         copyfile(checkout / "media/gltf/controller" / asset, output / "controller" / asset)
+    for name in ("controller", "controller-left"):
+        batch_grip(output / "controller" / (name + ".gltf"), output / "controller" / (name + "-batched.gltf"))
     (pages / "vr-barebones.html").write_bytes(html)
     browser_menu = """
 const params = new URL(location.href).searchParams;

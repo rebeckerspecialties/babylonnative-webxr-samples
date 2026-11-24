@@ -228,7 +228,7 @@ async function prepareLauncher() {
     xr.baseExperience.featuresManager.enableFeature("xr-layers", "latest");
     attachFrameRateHud(scene,xr);
     async function loadGrip(handedness: string) {
-        const name = handedness === "left" ? "controller-left.gltf" : "controller.gltf";
+        const name = (handedness === "left" ? "controller-left" : "controller") + (globalThis.webxrSingleDrawGrip === true ? "-batched.gltf" : ".gltf");
         const result = await ImportMeshAsync((native ? "app:///Scripts/controller/" : "./controller/") + name, scene, { meshNames: "mesh340565441" });
         if (!result.meshes.some(mesh => mesh.getTotalVertices() > 0)) throw Error("No controller geometry for " + handedness);
         return result.meshes;
