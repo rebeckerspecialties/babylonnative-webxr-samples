@@ -1,41 +1,9 @@
-# Repository notes
+# Quest WebXR qualification
 
-<!-- quest-qualification-handoff -->
-## Quest runtime qualification
+Build the ARM64 qualification APK using the committed submodules, not a system BabylonNative checkout. See [the build workflow](.github/workflows/android-apk.yml) and [runtime handoff](https://github.com/rebeckerspecialties/BabylonNative/blob/8a3cdc02/Documentation/QuestRuntimeHandoff.md). Keep hosted simulator screenshots off. Use ordinary device logging; separately check Home, tracking and physical passthrough after exit.
 
-Samples 6/10/36 qualify atlas orientation and actual movie content; 105/106 distinguish eye identity after composition.
-
-Start with the [shared Quest handoff](https://github.com/rebeckerspecialties/BabylonNative/blob/wgpu/Documentation/QuestRuntimeHandoff.md) for verified artifact pins, the camera ownership audit, and links to related PRs. Use normal logging, confirm both eyes on the physical display, and verify Home passthrough before and after a single test. Do not use compositor submission count as visual evidence or trigger hosted simulator screenshots for this handoff.
-
-- Implementation: Keep hosted APK asset checks, independent FFmpeg oracle and swapped-eye controls; investigate the Home passthrough relapse independently of successful layer output.
-- Device: Install the clean artifact; verify cube floor/ceiling, movie and eye markers, normal exit and Home passthrough before the next case.
-- For controller occlusion, use `python android/test-layers.py --capture OUT SERIAL 107 108` with OpenCV. Both captures must have opposite opaque foreground markers; only 107 may show the panorama. Stop other test apps first. For the actual interactive sample, `python3 android/capture-interactive-layer.py SERIAL 5 panorama.png` (10 for texture video) captures while the background and controller projection coexist, not after returning to the menu.
-- FPS is application XR animation-frame cadence in both eyes, not panel refresh, decoder throughput or synthesized frames. The time window spans at least one second. Never derive FPS from the number of submitted layers or eyes.
-- For movie correctness run `python3 android/test-layers.py SERIAL 109 110 10 109 11`. 109/110 use a packaged silent 24 fps VP8 remux at 72 Hz; 10/11 use the original 30 fps movie at 60 Hz. The texture cases compare both eyes with independent timed source pixels. Install FFmpeg before building. A plain resolved refresh-rate promise does not mean the display switched.
-- For performance run `python3 android/test-layers.py SERIAL 111 112 113 114`: 45 seconds each, 24 texture/direct then 30 texture/direct. No qualification readbacks during timing. Compare app FPS, missed predicted refreshes after two seconds, worst frame interval, uploads, and the app PID's VrApi stale and GPU reports. Keep the interactive controller/HUD render as a separate control. Direct media requires zero app pixel uploads; a borrowed decoder buffer still needs conversion and a wgpu upload on the texture path.
-
-Quest 1, 2026-11-23, one 45 s interval per case, no timing probes:
-
-| Film / display | Path | App FPS | Uploads | Steady missed refreshes | Worst steady interval |
-| --- | --- | ---: | ---: | ---: | ---: |
-| 24 / 72 | texture | 71.09 | 1073 | 21 | 55.6 ms |
-| 24 / 72 | direct surface | 71.47 | 0 | 21 | 83.3 ms |
-| 30 / 60 | texture | 59.33 | 1342 | 11 | 66.7 ms |
-| 30 / 60 | direct surface | 59.44 | 0 | 21 | 66.7 ms |
-
-These are raw projection + movie cases, not interactive menu performance. The
-separate 16 s texture movie with Babylon foreground/HUD and a display capture
-measured 56.50 at 60 Hz. Zero-app-upload direct media still missed intervals.
-In the retained steady VrApi seconds, median app GPU time was 2.02/1.19 ms
-(texture/direct at 72 Hz) and 2.30/1.09 ms (60 Hz). These are compositor
-reports, not shader counters. A separate no-movie menu control on the same
-headset showed 14 minor V8 collections of 24-39 ms over the sampled steady
-interval (median separation 5.5 s). Do not infer that every missed display
-was GC or that changing the GC interval fixes the source of allocations.
-
-For a GPU-only texture copy, the physical Adreno 540 reports Android hardware
-buffer import, sampler YCbCr conversion (feature bit 1), foreign queue family,
-and external semaphore FD support via `adb shell cmd gpu vkjson`. Still needed:
-verify the actual decoder buffer's import format and acquire/release fences,
-GPU-convert to the requested WebGPU destination, and hold the decoded frame
-until its last GPU use. Keep the CPU-readable fallback and both-eye oracle.
+- **Pixels:** `python android/test-layers.py --capture OUT SERIAL 118 25 26 27 28 105 106 107 108` (OpenCV). Require the two projection eyes, color/depth silhouettes, stereo film markers and transparent/opaque foreground controls. Cases 109/110 exercise silent 24 fps film; 10/11 exercise the original 30 fps film. FFmpeg reference pixels, display capture and headset inspection answer different questions.
+- **Pacing:** `python android/test-layers.py --log RUN.log --pacing SERIAL 111 112 113 114`. Actual 24 fps film at 72 Hz, then 30 at 60 Hz, texture before direct. No capture or sampling. After 2 s warmup count missed **predicted refreshes**, longest unbroken interval and steady rate. One missed interval fails the full-window gate. Use 3-6 and 115-118 for mono/stereo stills, 7 for combined layers. Run 9 separately: it needs a real select event.
+- **Interactive control:** `python android/capture-interactive-layer.py SERIAL 10 --timing-only` keeps the real Babylon controller projection/HUD. Use 3 for the photograph and 11 for direct media. Supply a screenshot path **instead** of timing mode to inspect controller occlusion. Do not infer interactive performance from the raw cases.
+- **Input Selection:** interactive Run uses the upstream tracked cameras; the separate automated score uses its synthetic cameras. Launch with `--ez selectionBenchmark true --ez trackedSelection true` to check projection and physical eye separation at draw time. Preserve both entry points.
+- **Limits:** See [device measurements](qualification/quest-1/pacing.md). Direct media uses a compositor Surface. Texture video still converts decoder pixels and uploads them. The [AHardwareBuffer probe](https://github.com/rebeckerspecialties/BabylonNative/blob/8a3cdc02/Core/GraphicsWgpu/Tests/AndroidDecoderImport.md) imported real frames but did not establish a sampleable format on Quest 1. The iPhone AR portal is a separate application; it does not qualify these VR samples on iOS.
