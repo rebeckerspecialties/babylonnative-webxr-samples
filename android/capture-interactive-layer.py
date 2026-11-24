@@ -5,23 +5,32 @@ import subprocess
 import time
 
 
-def capture(serial, page, output, reference_grip):
+def capture(serial, page, output, reference_grip, disable_recorder):
     adb = ["adb", "-s", serial]
     package = "com.rebeckerspecialties.xrsamples"
     subprocess.run(adb + ["shell", "am", "start", "-S", "-W", "-n", package + "/.SampleActivity",
-                          "--ei", "inspectImage", str(page), "--ez", "referenceGrip", str(reference_grip).lower()], check=True, timeout=30)
+                          "--ei", "inspectImage", str(page), "--ez", "inspectGrip", str(output is not None).lower(),
+                          "--ez", "referenceGrip", str(reference_grip).lower(),
+                          "--ez", "disableRecorder", str(disable_recorder).lower()], check=True, timeout=30)
     pid = subprocess.check_output(adb + ["shell", "pidof", package], text=True).strip()
     assert pid
+    timing_log = None
+    if output is None:
+        # One passive reader instead of starting a logcat process every 250 ms
+        # on the measured headset. Fetch the receipt once the case has returned.
+        timing_log = subprocess.check_output(adb + ["logcat", "--pid=" + pid, "--print", "-m", "1", "-e",
+                              "XR (image inspection returned|launcher FAIL|layer FAIL)", "-s", "BabylonNative"],
+                              timeout=85, text=True)
     start = None
     captured = False
     deadline = time.monotonic() + 85
     while time.monotonic() < deadline:
-        log = subprocess.check_output(adb + ["logcat", "-d", "--pid=" + pid, "-s", "BabylonNative"], text=True)
+        log = timing_log or subprocess.check_output(adb + ["logcat", "-d", "--pid=" + pid, "-s", "BabylonNative"], text=True)
         if "XR launcher FAIL" in log or "XR layer FAIL" in log:
             raise RuntimeError(log.splitlines()[-8:])
         if start is None and "XR displaying layer" in log:
             start = time.monotonic()
-        if start and not captured and time.monotonic() - start > (12 if page >= 10 else 2):
+        if output is not None and start and not captured and time.monotonic() - start > (12 if page >= 10 else 2):
             if "XR layer submitted" in log:
                 raise RuntimeError("Missed the active layer")
             with output.open("wb") as dest:
@@ -29,7 +38,8 @@ def capture(serial, page, output, reference_grip):
             poses = [line for line in log.splitlines() if "XR inspection grip in viewer space" in line]
             print(poses[-1] if poses else "No grip pose sample")
             captured = True
-        if captured and "XR image inspection returned" in log:
+        if (captured or output is None) and "XR image inspection returned" in log:
+            print(next(line for line in log.splitlines() if "XR inspection command recorder" in line))
             print(next(line for line in log.splitlines() if "XR layer submitted" in line))
             return
         time.sleep(.25)
@@ -40,7 +50,11 @@ if __name__ == "__main__":
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("serial")
     p.add_argument("page", type=int, choices=[3,4,5,6,10,11,12,13])
-    p.add_argument("output", type=Path)
+    p.add_argument("output", nargs="?", type=Path)
+    p.add_argument("--timing-only", action="store_true", help="Keep the real foreground but do not take a display capture")
+    p.add_argument("--disable-recorder", action="store_true", help="Matched control for the engine command recorder")
     p.add_argument("--reference-grip", action="store_true", help="Also draw the actual grip asset at a fixed test pose")
     args = p.parse_args()
-    capture(args.serial, args.page, args.output, args.reference_grip)
+    if (args.output is None) != args.timing_only:
+        p.error("provide either a screenshot path or --timing-only")
+    capture(args.serial, args.page, args.output, args.reference_grip, args.disable_recorder)

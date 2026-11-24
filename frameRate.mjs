@@ -4,6 +4,7 @@ export class XRFrameRate {
         this.first = this.last = this.windowStart = undefined;
         this.intervals = this.windowIntervals = 0;
         this.steadyIntervals = this.missed = this.maxGapMs = 0;
+        this.steadyMs = this.cleanMs = this.longestCleanMs = 0;
     }
     constructor(displayHz=0) { this.displayHz=displayHz; this.reset(); }
     sample(time) {
@@ -18,7 +19,11 @@ export class XRFrameRate {
             const gap=time-this.last;
             ++this.steadyIntervals;
             this.maxGapMs=Math.max(this.maxGapMs,gap);
-            this.missed+=Math.max(0,Math.round(gap*this.displayHz/1000)-1);
+            const missed=Math.max(0,Math.round(gap*this.displayHz/1000)-1);
+            this.missed+=missed;
+            this.steadyMs+=gap;
+            this.cleanMs=missed ? 0 : this.cleanMs+gap;
+            this.longestCleanMs=Math.max(this.longestCleanMs,this.cleanMs);
         }
         this.last = time;
         ++this.intervals;

@@ -10,7 +10,9 @@ with ZipFile(sys.argv[1]) as apk:
     base = PurePosixPath("assets/Scripts")
     fixed = ["launcher.js", "main.js", "babylon_lite_bootstrap.js", "menu-entry.js",
              "layer-images/rect-mono.png", "layer-images/mono_equirect_test.png",
-             "layer-images/mono_cube_map.png", "layer-images/ATTRIBUTION.md", "controller/ATTRIBUTION.md"]
+             "layer-images/mono_cube_map.png", "layer-images/stereo_cube_map.png",
+             "layer-images/rect-stereo-top-down.png", "layer-images/chess-pano-4k.png",
+             "layer-images/ATTRIBUTION.md", "controller/ATTRIBUTION.md"]
     for name in fixed:
         if not apk.getinfo(str(base / name)).file_size:
             raise ValueError(f"Empty asset: {name}")

@@ -53,10 +53,11 @@ def generate(checkout, output):
     (output / "layer-images").mkdir(exist_ok=True)
     for name in ("sunflower","reticle","cube-room"):
         copytree(checkout / "media/gltf" / name, output / "spatial" / name, dirs_exist_ok=True, ignore=ignore_patterns("*.blend"))
-    for image in ("rect-mono.png","mono_equirect_test.png"):
+    for image in ("rect-mono.png","mono_equirect_test.png","rect-stereo-top-down.png","chess-pano-4k.png"):
         copyfile(checkout / "media/textures" / image, output / "layer-images" / image)
-    subprocess.run(["java", Path(__file__).parent / "tools/PrepareCube.java",
-                    checkout / "media/textures/mono_cube_map.png", output / "layer-images/mono_cube_map.png"], check=True)
+    for strip in ("mono_cube_map.png","stereo_cube_map.png"):
+        subprocess.run(["java", Path(__file__).parent / "tools/PrepareCube.java",
+                        checkout / "media/textures" / strip, output / "layer-images" / strip], check=True)
     for asset in ("bbb-sunflower-540p2-1min.webm","ATTRIBUTION.md"):
         copyfile(checkout / "media/video" / asset, output / "layer-images" / asset)
     # Same compressed VP8 frames at 24 rather than 30 fps. Keep attribution

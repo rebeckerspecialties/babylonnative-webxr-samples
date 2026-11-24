@@ -22,13 +22,14 @@ public final class SampleActivity extends Activity {
         boolean menu = getIntent().getBooleanExtra("launcher", true);
         if (menu) BabylonNative.runtimeLoadScript(runtime, "app:///Scripts/menu-entry.js");
         if (menu && getIntent().getBooleanExtra("selectionBenchmark", false)) {
-            BabylonNative.runtimeEval(runtime, "globalThis.webxrBenchmarkSpaceWarp=" + getIntent().getBooleanExtra("spaceWarp", false),
+            BabylonNative.runtimeEval(runtime, "globalThis.webxrBenchmarkSpaceWarp=" + getIntent().getBooleanExtra("spaceWarp", false)
+                    + ";globalThis.webxrBenchmarkTracked=" + getIntent().getBooleanExtra("trackedSelection", false),
                     "app:///Scripts/benchmark-options.js");
         }
         int[] cases = getIntent().getIntArrayExtra("layerChecks");
         if (cases != null && menu) {
             for (int index : cases)
-                if ((index < 3 || index >= 55) && (index < 100 || index > 114)) throw new IllegalArgumentException("Invalid compositor check: " + index);
+                if ((index < 3 || index >= 55) && (index < 100 || index > 118)) throw new IllegalArgumentException("Invalid compositor check: " + index);
             BabylonNative.runtimeEval(runtime, "globalThis.webxrLayerChecks=" + java.util.Arrays.toString(cases),
                     "app:///Scripts/layer-check-options.js");
         }
@@ -42,7 +43,9 @@ public final class SampleActivity extends Activity {
         int inspect = getIntent().getIntExtra("inspectImage", -1);
         if (menu && (inspect >= 3 && inspect <= 6 || inspect >= 10 && inspect <= 13)) {
             BabylonNative.runtimeEval(runtime, "globalThis.webxrInspectImage=true;globalThis.webxrReferenceGrip=" +
-                    getIntent().getBooleanExtra("referenceGrip", false) + ";globalThis.webxrSamplePage=" + inspect,
+                    getIntent().getBooleanExtra("referenceGrip", false) + ";globalThis.webxrInspectGrip=" +
+                    getIntent().getBooleanExtra("inspectGrip", true) + ";globalThis.webxrDisableRecorder=" +
+                    getIntent().getBooleanExtra("disableRecorder", false) + ";globalThis.webxrSamplePage=" + inspect,
                     "app:///Scripts/inspect-image.js");
         }
         BabylonNative.runtimeLoadScript(runtime, "app:///Scripts/main.js");

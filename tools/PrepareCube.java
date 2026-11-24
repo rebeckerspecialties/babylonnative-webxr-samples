@@ -6,8 +6,8 @@ import javax.imageio.ImageIO;
 class PrepareCube {
     public static void main(String[] args) throws Exception {
         BufferedImage strip = ImageIO.read(new File(args[0]));
-        if (strip == null || strip.getWidth() != 6 * strip.getHeight()) {
-            throw new IllegalArgumentException("Expected a horizontal strip of six square faces");
+        if (strip == null || (strip.getWidth() != 6 * strip.getHeight() && strip.getWidth() != 12 * strip.getHeight())) {
+            throw new IllegalArgumentException("Expected six square faces per eye");
         }
         int width = strip.getWidth();
         var raster = strip.getRaster();

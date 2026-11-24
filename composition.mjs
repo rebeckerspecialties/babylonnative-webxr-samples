@@ -95,6 +95,22 @@ async function inspectVideo(device,sub,time) {
 }
 // Browser and native use the same binding. Never draw a mesh as a stand-in for a compositor layer.
 const assets = {Quad:"rect-mono.png", Cylinder:"rect-mono.png", Equirect:"mono_equirect_test.png", Cube:"mono_cube_map.png"};
+const stereoAssets = {Quad:"rect-stereo-top-down.png", Cylinder:"rect-stereo-top-down.png", Equirect:"chess-pano-4k.png", Cube:"stereo_cube_map.png"};
+export const stereoImageCases=Object.keys(stereoAssets).map(kind=>[kind+" image (stereo)",[kind],"stereoImage"]);
+export function imageSourceOrigin(cube, stereo, eye, face, width, height) {
+    // Upstream flips the entire cube strip, then uploads right faces 0..5 and left 6..11.
+    if(cube) return [(face+(stereo && eye==="left"?6:0))*width,0];
+    return [0,stereo && eye==="right"?height:0];
+}
+// A stereo cube exposes one 12-slice GPUTexture; each eye's descriptor
+// selects its first 2D face. Two individually valid mono textures are wrong.
+export function checkStereoCubeEye(texture, descriptor, eye, leftTexture) {
+    if (texture.depthOrArrayLayers !== 12 || descriptor.dimension !== "2d" ||
+        descriptor.arrayLayerCount !== 1 || descriptor.baseArrayLayer !== (eye === "left" ? 0 : 6) ||
+        (eye === "right" && texture !== leftTexture)) {
+        throw Error("Invalid stereo cube texture or first face for " + eye);
+    }
+}
 export const layerCases = [
     ["Quad image", ["Quad"]], ["Cylinder image", ["Cylinder"]], ["Equirect image", ["Equirect"]],
     ["Cube faces", ["Cube"]], ["Quad + cylinder", ["Quad","Cylinder"]], ["Destroy quad", ["Quad"], "destroy"],
@@ -164,6 +180,7 @@ export async function exerciseLayer(entry, session, device, space, baseURL, fove
     const oldFoveation = projection.fixedFoveation;
     const gpu = new XRGPUBinding(session,device);
     const media = operation === "media";
+    const stereoImage = operation==="stereoImage";
     if (media && typeof XRMediaBinding !== "function") throw Error("Missing XRMediaBinding");
     const factory = media ? new XRMediaBinding(session) : gpu;
     requireFactories(factory,kinds);
@@ -172,11 +189,11 @@ export async function exerciseLayer(entry, session, device, space, baseURL, fove
     let video, changed = false, foveationChanged = false, active = true, select;
     let film, uploads=0;
     const initialRate=session.frameRate;
-    const targetRate=filmFPS===24 ? 72 : 60;
-    const matchFilm=useVideo && initialRate>0 && initialRate!==targetRate && session.supportedFrameRates?.includes(targetRate) && typeof session.updateTargetFrameRate==="function";
+    const targetRate=!useVideo || filmFPS===24 ? 72 : 60;
+    const changeRate=initialRate>0 && initialRate!==targetRate && session.supportedFrameRates?.includes(targetRate) && typeof session.updateTargetFrameRate==="function";
     let rateChanged=false;
     try {
-        if(matchFilm) { rateChanged=true; await requestFilmRate(session,targetRate); }
+        if(changeRate) { rateChanged=true; await requestFilmRate(session,targetRate); }
         if (foveation !== null) {
             if (oldFoveation == null) throw Error("Projection fixed foveation unsupported");
             projection.fixedFoveation = foveation;
@@ -192,12 +209,12 @@ export async function exerciseLayer(entry, session, device, space, baseURL, fove
         }
         for (const [i,kind] of kinds.entries()) {
             const transform = new XRRigidTransform({x:kinds.length===1 ? 0 : i-0.5,y:0,z:kind==="Quad"?-2:0});
-            const options = {space,layout:useVideo ? "stereo-top-bottom" : "mono"};
+            const options = {space,layout:stereoImage && kind==="Cube" ? "stereo" : useVideo || stereoImage ? "stereo-top-bottom" : "mono"};
             if (kind !== "Cube") options.transform = transform;
             if (kind === "Quad") Object.assign(options,{width:2,height:1});
             if (kind === "Cylinder") Object.assign(options,{radius:2,centralAngle:1,aspectRatio:2});
-            const image = useVideo ? video : await loadImage(baseURL + assets[kind]);
-            const height = useVideo ? image.videoHeight/2 : image.height;
+            const image = useVideo ? video : await loadImage(baseURL + (stereoImage?stereoAssets:assets)[kind]);
+            const height = useVideo ? image.videoHeight/2 : image.height/(stereoImage && kind!=="Cube"?2:1);
             const width = useVideo ? image.videoWidth : kind === "Cube" ? height : image.width;
             if (!width || !height) throw Error("Source has no decoded dimensions");
             if (kind==="Equirect" && useVideo) Object.assign(options,videoAngles(width,height));
@@ -238,8 +255,10 @@ export async function exerciseLayer(entry, session, device, space, baseURL, fove
                 if (!active) return;
                 try {
                     if (inspectError) throw inspectError;
-                    if (!requested.every((l,i)=>session.renderState.layers[i]===l) || session.renderState.layers.length!==requested.length)
-                        throw Error("Wrong ordered layers at next frame");
+                    const activeLayers=session.renderState.layers;
+                    if (activeLayers.length!==requested.length) throw Error("Wrong ordered layers: count");
+                    for(let i=0;i<requested.length;i++)
+                        if(activeLayers[i]!==requested[i]) throw Error("Wrong ordered layers at index "+i);
                     firstTime ??= performance.now();
                     cadence.sample(time);
                     if (drawForeground) drawForeground(xr,projection);
@@ -277,14 +296,21 @@ export async function exerciseLayer(entry, session, device, space, baseURL, fove
                                 });
                             }
                         } else {
-                            const sub = gpu.getSubImage(item.layer,xr,"none");
-                            const descriptor = sub.getViewDescriptor();
-                            for (let i=0;i<faces;i++) device.queue.copyExternalImageToTexture(
-                            {source:item.image,origin:[i*item.width,0]},
-                            {texture:sub.colorTexture,origin:[sub.viewport.x,sub.viewport.y,(descriptor.baseArrayLayer??0)+i]},
-                            [item.width,item.height]);
-                            if (!item.uploaded && assets[item.kind]==="rect-mono.png")
-                                inspections.push(inspectRect(device,sub).catch(e=>{inspectError=e;}));
+                            let leftTexture;
+                            for(const eye of stereoImage?["left","right"]:["none"]){
+                                const sub = gpu.getSubImage(item.layer,xr,eye);
+                                const descriptor = sub.getViewDescriptor();
+                                if (stereoImage && faces === 6) {
+                                    checkStereoCubeEye(sub.colorTexture, descriptor, eye, leftTexture);
+                                    if (eye === "left") leftTexture = sub.colorTexture;
+                                }
+                                for (let i=0;i<faces;i++) device.queue.copyExternalImageToTexture(
+                                    {source:item.image,origin:imageSourceOrigin(item.kind==="Cube",stereoImage,eye,i,item.width,item.height)},
+                                    {texture:sub.colorTexture,origin:[sub.viewport.x,sub.viewport.y,(descriptor.baseArrayLayer??0)+i]},
+                                    [item.width,item.height]);
+                                if (!item.uploaded && !stereoImage && assets[item.kind]==="rect-mono.png")
+                                    inspections.push(inspectRect(device,sub).catch(e=>{inspectError=e;}));
+                            }
                         } }
                         finally { if(scoped) validation.push(device.popErrorScope()); }
                         item.uploaded = true;
@@ -323,7 +349,7 @@ export async function exerciseLayer(entry, session, device, space, baseURL, fove
         if(inspectError) throw inspectError;
         if(operation==="textureVideo" && verifyFilmPixels && stereoReference.length!==2) throw Error("Missing timed stereo video references");
         return {title,frames:count,fps:cadence.average,displayHz:session.frameRate,steadyIntervals:cadence.steadyIntervals,
-            missedRefreshes:cadence.missed,maxGapMs:cadence.maxGapMs,foveation,uploads,mediaSeconds:video?.currentTime,headSweep:sweep?.result(),stereoReference,verifiedLayerImages:inspections.length};
+            steadyMs:cadence.steadyMs,longestCleanMs:cadence.longestCleanMs,missedRefreshes:cadence.missed,maxGapMs:cadence.maxGapMs,foveation,uploads,mediaSeconds:video?.currentTime,headSweep:sweep?.result(),stereoReference,verifiedLayerImages:inspections.length};
     } finally {
         active = false;
         if (select) session.removeEventListener("select",select);

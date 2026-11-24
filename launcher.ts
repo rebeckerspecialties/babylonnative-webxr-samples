@@ -1,7 +1,7 @@
 import { showMenu } from "sample-menu";
 import { attachGripModel } from "./gripModel.mjs";
 import { attachFrameRateHud } from "./frameRateHud";
-import { bounded, exerciseLayer, inspectionSpace, layerCases } from "./composition.mjs";
+import { bounded, exerciseLayer, inspectionSpace, layerCases, stereoImageCases } from "./composition.mjs";
 import { projectionPixels } from "./projectionPixels.mjs";
 import { warpFrames } from "./spaceWarp.mjs";
 import { densityPixels } from "./densityPixels.mjs";
@@ -24,7 +24,8 @@ async function prepareLauncher() {
     const native = typeof globalThis.runWebXRSample === "function";
     if (native && typeof globalThis.webxrBenchmarkSpaceWarp === "boolean") {
             try {
-                const result=await require("input-selection-page").runBenchmark("app:///Scripts/",globalThis.webxrBenchmarkSpaceWarp);
+                const tracked=globalThis.webxrBenchmarkTracked===true;
+                const result=await require("input-selection-page").runBenchmark("app:///Scripts/",globalThis.webxrBenchmarkSpaceWarp,tracked,tracked);
                 console.info("XR benchmark finished",result);
             } catch(e) { console.error("XR benchmark FAIL",e.stack || e); }
             return;
@@ -69,22 +70,52 @@ async function prepareLauncher() {
             pass.setPipeline(markerPipeline);
             pass.draw(3,1,0,eye==="right"?1:0);
         };
+        const attachment = {view: undefined, loadOp:"clear", storeOp:"store", clearValue:[0,0,0,0]};
+        const passDescriptor = {colorAttachments:[attachment]};
+        const commands = [undefined];
         const clearForeground = (frame, layer, marker=false) => {
             const pose = frame.getViewerPose(space);
             if (!pose) return;
             const encoder = device.createCommandEncoder();
-            for (const view of pose.views) {
+            const views=pose.views;
+            for (let index=0; index<views.length; ++index) {
+                const view=views[index];
                 const sub = binding.getViewSubImage(layer,view);
-                const pass=encoder.beginRenderPass({colorAttachments:[{
-                    view:sub.colorTexture.createView(sub.getViewDescriptor()),
-                    loadOp:"clear", storeOp:"store", clearValue:[0,0,0,0]
-                }]});
+                // The descriptor is consumed synchronously; the opaque texture view is frame-local.
+                attachment.view=sub.colorTexture.createView(sub.getViewDescriptor());
+                const pass=encoder.beginRenderPass(passDescriptor);
+                attachment.view=undefined;
                 if(marker) mark(pass,sub,view.eye);
                 pass.end();
             }
-            device.queue.submit([encoder.finish()]);
+            commands[0]=encoder.finish();
+            device.queue.submit(commands);
+            commands[0]=undefined;
         };
-        await new Promise(resolve=>session.requestAnimationFrame(resolve));
+        // Read one property late: the next device frame must not invalidate the previous JS view.
+        let savedView, previousMatrix, savedX;
+        await new Promise((resolve,reject)=>{
+            function capture(_,frame){
+                try {
+                    const view=frame.getViewerPose(space)?.views[0];
+                    if(!view){session.requestAnimationFrame(capture);return;}
+                    savedView=view; previousMatrix=view.projectionMatrix;
+                    savedX=view.transform.position.x;
+                    resolve(true);
+                } catch(e){reject(e);}
+            }
+            session.requestAnimationFrame(capture);
+        });
+        await new Promise((resolve,reject)=>session.requestAnimationFrame((_,frame)=>{
+            try {
+                const current=frame.getViewerPose(space)?.views[0];
+                if (!current || savedView===current || savedView.projectionMatrix!==previousMatrix ||
+                    savedView.transform.position.x!==savedX || savedView.transform!==savedView.transform ||
+                    savedView.transform.inverse.inverse!==savedView.transform)
+                    throw Error("XRView snapshot or transform identity lost across frames");
+                resolve(true);
+            } catch(e){reject(e);}
+        }));
         for(const page of globalThis.webxrLayerChecks) {
             const index=(page-3)%26, foveation=page>=29?1:null;
             try {
@@ -98,14 +129,15 @@ async function prepareLauncher() {
                             "app:///Scripts/layer-images/",null,false,8000,false,(f,p)=>clearForeground(f,p,true));
                     } finally {base.blendTextureSourceAlpha=true;}
                 };
-                const result=page>=111 && page<=114 ? await exerciseLayer(layerCases.find(c=>c[2]===(page%2?"textureVideo":"media")),session,device,
+                const result=page>=115 && page<=118 ? await exerciseLayer(stereoImageCases[page-115],session,device,await inspectionSpace(session,space),
+                    "app:///Scripts/layer-images/",null,false,20000,false,clearForeground) : page>=111 && page<=114 ? await exerciseLayer(layerCases.find(c=>c[2]===(page%2?"textureVideo":"media")),session,device,
                     await inspectionSpace(session,space),"app:///Scripts/layer-images/",null,false,45000,false,clearForeground,{verifyFilmPixels:false,filmFPS:page<=112?24:30}) :
                     page===109 || page===110 ? await exerciseLayer(layerCases.find(c=>c[2]===(page===109?"textureVideo":"media")),session,device,
                     await inspectionSpace(session,space),"app:///Scripts/layer-images/",null,false,19000,false,clearForeground,{filmFPS:24}) :
                     page===107 || page===108 ? await checkAlpha() : page===105 || page===106 ? await exerciseLayer(layerCases.find(c=>c[2]==="textureVideo"),session,device,
                     await inspectionSpace(session,space),"app:///Scripts/layer-images/",page===106?1:null,false,15000,true,clearForeground) :
                     page===101 ? await densityPixels(session,device,space) : page>=100 ? await warpFrames(session,device,space,["Quad","Cylinder","Equirect"][page-102]) : index<22 ? await exerciseLayer(layerCases[index%11],session,device,await inspectionSpace(session,space),
-                    "app:///Scripts/layer-images/",foveation,index>=11,8000,false,clearForeground) :
+                    "app:///Scripts/layer-images/",foveation,index>=11,20000,false,clearForeground) :
                     await projectionPixels(session,device,space,index>=24,index%2!==0,foveation);
                 console.info("XR layer submitted", JSON.stringify(result));
             } catch(e) {console.error("XR layer FAIL",page,e.message);}
@@ -117,6 +149,11 @@ async function prepareLauncher() {
     }
     const engine = new WebGPUEngine(document.getElementById("webgpu_canvas"), { xrCompatible: true, audioEngine: false });
     await engine.initAsync();
+    const recorder = navigator.gpu?.__babylonNativeRenderPassCommandRecorderProvider;
+    if (recorder && "renderPassCommandRecorderProvider" in engine && !engine.renderPassCommandRecorderProvider) {
+        engine.renderPassCommandRecorderProvider = recorder;
+    }
+    if (globalThis.webxrDisableRecorder === true) engine.renderPassCommandRecorderProvider = null;
     const scene = new Scene(engine);
     scene.clearColor.set(0,0,0,0);
     // Controller glTF assets and WebXR grip/target-ray poses use the same right-handed basis.
@@ -124,7 +161,8 @@ async function prepareLauncher() {
     new HemisphericLight("controller light", Vector3.Up(), scene);
     scene.activeCamera = new FreeCamera("viewer", Vector3.Zero(), scene);
     const xr = await WebXRDefaultExperience.CreateAsync(scene, {
-        disableDefaultUI: true, disableTeleportation: true,
+        // The selector handles XR select rays; it has no near-pickable content.
+        disableDefaultUI: true, disableTeleportation: true, disableNearInteraction: true,
         inputOptions: { doNotLoadControllerMeshes: true, disableOnlineControllerRepository: true },
     });
     xr.baseExperience.featuresManager.enableFeature("xr-layers", "latest");
@@ -149,6 +187,7 @@ async function prepareLauncher() {
             ...[false,true].flatMap(moving=>layerCases.map(entry=>({entry,foveation,moving}))),
             ...[false,true].flatMap(single=>[false,true].map(depth=>({entry:[(single?"Single-pass":"Two-pass")+" stereo: "+(depth?"color + depth":"color only")],foveation,single,depth})))
         ]);
+        for (const entry of stereoImageCases) variants.push({entry, foveation:null, moving:false});
         const titles = ["Stereo projection", "Viewer-relative projection", "Projection layer replacement",
             ...variants.map(v=>v.entry[0]+(v.foveation === null ? "" : " + foveation")+("moving" in v && v.moving ? " + head sweep" : "")),...spatialCases.map(v=>v.title),
             "Input Selection Benchmark","Input Selection Benchmark + space warp"];
@@ -162,7 +201,7 @@ async function prepareLauncher() {
             if(page>=titles.length-2) {
                 try {
                     await xr.baseExperience.exitXRAsync();
-                    try {status=await require("input-selection-page").runBenchmark(native?"app:///Scripts/":"./",page===titles.length-1);}
+                    try {status=await require("input-selection-page").runBenchmark(native?"app:///Scripts/":"./",page===titles.length-1,true);}
                     finally {await xr.baseExperience.enterXRAsync("immersive-vr","local",xr.renderTarget,{requiredFeatures:["webgpu","layers"]});}
                 } catch(e) {status=e.message;console.error("XR benchmark FAIL",e.stack || e);}
                 finally {busy=false;menu.refresh?.();}
@@ -198,7 +237,7 @@ async function prepareLauncher() {
                         const space=await inspectionSpace(manager.session,manager.referenceSpace);
                         menu.setVisible?.(false);
                         result = await exerciseLayer(v.entry,manager.session,engine._device,space,
-                            native ? "app:///Scripts/layer-images/" : "./layer-images/", v.foveation, v.moving,16000,false,undefined,{verifyFilmPixels:false});
+                            native ? "app:///Scripts/layer-images/" : "./layer-images/", v.foveation, v.moving,20000,false,undefined,{verifyFilmPixels:false});
                     }
                     status = result.verifiedLayerImages ? "Layer image pixels verified" : "Submitted: " + result.frames + " frames (" + result.fps.toFixed(1) + " FPS)";
                     console.info("XR layer submitted",JSON.stringify(result));
@@ -230,10 +269,11 @@ async function prepareLauncher() {
         console.info("XR launcher ready", titles[page]);
         if (globalThis.webxrInspectImage === true) {
             globalThis.webxrInspectImage=false;
+            console.info("XR inspection command recorder",!!engine.renderPassCommandRecorderProvider);
             const manager=xr.baseExperience.sessionManager;
-            const viewer=await manager.session.requestReferenceSpace("viewer");
+            const viewer=globalThis.webxrInspectGrip === false ? null : await manager.session.requestReferenceSpace("viewer");
             let lastGripSample=-Infinity;
-            const gripProbe=manager.onXRFrameObservable.add(frame=>{
+            const gripProbe=viewer && manager.onXRFrameObservable.add(frame=>{
                 const now=manager.currentTimestamp;
                 if(now-lastGripSample<500) return;
                 lastGripSample=now;
@@ -260,7 +300,7 @@ async function prepareLauncher() {
                     manager.onXRFrameObservable.remove(ob); resolve(true);
                 });
             }),5000,"No tracked menu frame");
-            try {await run();} finally {manager.onXRFrameObservable.remove(gripProbe);referenceGrip?.dispose(false,true);}
+            try {await run();} finally {if(gripProbe) manager.onXRFrameObservable.remove(gripProbe);referenceGrip?.dispose(false,true);}
             if (status !== "Layer image pixels verified" && !status.startsWith("Submitted:")) throw Error("Menu layer inspection failed: "+status);
             console.info("XR image inspection returned", titles[page]);
         }

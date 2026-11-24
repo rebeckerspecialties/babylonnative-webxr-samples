@@ -35,11 +35,26 @@ module.exports = function benchmarkPlugin() {
                 .replace("benchmarkState = null;\n          updateFeatureControls();","benchmarkState = null; reject(err);\n          updateFeatureControls();")
                 .replace("function onSessionEnded(event) {","function onSessionEnded(event) { if(event?.type!=='end' || event.session!==active || event.target!==active){reject(Error('Wrong XRSession end event'));return;}")
                 .replace(/updateFeatureControls\(\);\s*\}\s*function getHandIndex/,"updateFeatureControls(); resolve(benchmarkStatus.textContent); }\nfunction getHandIndex")
-                .replace("xrButton.setSession(session);","active = session; xrButton.setSession(session);");
+                .replace("xrButton.setSession(session);","active = session; xrButton.setSession(session);")
+                .replaceAll("scene.drawViewArray(views);","if (checkTracked) verifyTracked(views, pose); scene.drawViewArray(views);");
             return {resolveDir:path.dirname(file),contents:imports+`
 import {GL} from "@luma.gl/constants";
-export async function runBenchmark(root, warp=false) {
+export async function runBenchmark(root, warp=false, interactive=false, checkTracked=false) {
  let active, resolve, reject;
+ const requireTracked=checkTracked;
+ function verifyTracked(views,pose) {
+   if (views.length!==2) return;
+   for(let i=0;i<2;i++){
+     if(views[i].projectionMatrix!==pose.views[i].projectionMatrix || views[i].viewTransform!==pose.views[i].transform) {
+       reject(Error("Selection draw replaced a tracked eye camera"));return;
+     }
+   }
+   const a=views[0].viewTransform.position,b=views[1].viewTransform.position;
+   const separation=Math.hypot(a.x-b.x,a.y-b.y,a.z-b.z);
+   if(!(separation>0.02 && separation<0.12)){reject(Error("Unexpected separation: "+separation)); return;}
+   console.info("XR tracked selection draw, eye separation metres",separation);
+   checkTracked=false;
+ }
  const ended=new Promise((ok,fail)=>{resolve=ok;reject=fail});
  const controls=Object.fromEntries(["webgpu_status","use_space_warp","use_multiview","do_antialias","use_ripple","shape_count","shape_count_value","benchmark_button","benchmark_status"].map(id=>[id,{checked:["do_antialias","use_ripple"].includes(id),value:9,dataset:{},addEventListener(){}}]));
  controls.use_space_warp.checked=warp;
@@ -51,8 +66,16 @@ export async function runBenchmark(root, warp=false) {
    await initXR();
    if (!immersiveVrSupported) throw Error(webgpuStatus.textContent || "Immersive VR unavailable");
    deadline=setTimeout(()=>reject(Error("Selection benchmark exceeded its measurement deadline")),240000);
-   startBenchmark();
-   return await ended;
+   // The upstream scoring button deliberately replaces both eyes with the same
+   // synthetic camera. Headset inspection uses its normal tracked entry point.
+   if(interactive) {
+     await onRequestSession();
+     clearTimeout(deadline);
+     deadline=setTimeout(()=>active.end().catch(reject),30000);
+   } else startBenchmark();
+   const result=await ended;
+   if(requireTracked && checkTracked) throw Error("No tracked stereo selection draw");
+   return interactive ? "Tracked selection complete" : result;
  } finally {clearTimeout(deadline); if(active && !active.ended && xrButton?.session) await active.end().catch(()=>{}); device?.destroy();}
 }`};
         });
