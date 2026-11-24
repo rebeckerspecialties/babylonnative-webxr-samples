@@ -40,12 +40,13 @@ def stage = tasks.register('stageSample', Sync) {
         from(layout.buildDirectory.dir('generated/entries')) { include 'main.js', 'offset.js', 'menu-entry.js', 'menu-check.js' }
         from(new File(launcher, 'launcher.js'))
         from(host)
+        from(new File(host.parentFile, 'xr_projection_density_validation.js'))
         from(layout.buildDirectory.dir('generated/entries/controller')) { into 'controller' }
         from(layout.buildDirectory.dir('generated/entries/layer-images')) { into 'layer-images' }
         from(layout.buildDirectory.dir('generated/entries/spatial')) { into 'spatial' }
     }
     doLast {
-        for (name in ['launcher.js', 'main.js', 'babylon_lite_bootstrap.js']) {
+        for (name in ['launcher.js', 'main.js', 'babylon_lite_bootstrap.js', 'xr_projection_density_validation.js']) {
             if (!new File(destinationDir, "Scripts/$name").isFile()) throw new GradleException("Missing $name")
         }
     }

@@ -32,6 +32,18 @@ module.exports = function benchmarkPlugin() {
                 .replaceAll("createRendererAndScene(canvasFormat);","")
                 .replace("startCanvasFrames();","")
                 .replace("configureCanvas(colorFormat);","")
+                .replace("layer = binding.createProjectionLayer(layerInit);", `if (globalThis.validateProjectionDensity) {
+                    layerInit.textureUsage = GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC;
+                }
+                layer = binding.createProjectionLayer(layerInit);
+                if (interactive && typeof layer.fixedFoveation === "number") layer.fixedFoveation = 0.5;`)
+                .replace("session.requestReferenceSpace('local-floor').then((refSpace) => {\n          xrRefSpace = refSpace;", `session.requestReferenceSpace('local-floor').then(async (refSpace) => {
+                  if (globalThis.validateProjectionDensity) {
+                    const data = await globalThis.validateProjectionDensity(session, device, refSpace, layer, doAntialias.checked ? 4 : 1);
+                    console.info("XR selection projection density", JSON.stringify(data));
+                  }
+                  xrRefSpace = refSpace;`)
+                .replace("session.requestAnimationFrame(onXRFrame);\n        });", "session.requestAnimationFrame(onXRFrame);\n        }).catch(reject);")
                 .replace("benchmarkState = null;\n          updateFeatureControls();","benchmarkState = null; reject(err);\n          updateFeatureControls();")
                 .replace("function onSessionEnded(event) {","function onSessionEnded(event) { if(event?.type!=='end' || event.session!==active || event.target!==active){reject(Error('Wrong XRSession end event'));return;}")
                 .replace(/updateFeatureControls\(\);\s*\}\s*function getHandIndex/,"updateFeatureControls(); resolve(benchmarkStatus.textContent); }\nfunction getHandIndex")
