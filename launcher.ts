@@ -43,7 +43,11 @@ async function prepareLauncher() {
             if(e.name!=="NotSupportedError") throw e;
         }
         const warp = globalThis.webxrLayerChecks.some(n=>n===100 || (n>=102 && n<=104));
-        const session = await navigator.xr.requestSession("immersive-vr",{requiredFeatures:["webgpu","layers","local",...(warp?["space-warp"]:[])],optionalFeatures:[unknown]});
+        const ar = globalThis.webxrLayerChecks.includes(119);
+        if (ar && globalThis.webxrLayerChecks.length !== 1) throw Error("Run the passthrough handoff in its own session");
+        const mode = ar ? "immersive-ar" : "immersive-vr";
+        if (!await navigator.xr.isSessionSupported(mode)) throw Error(mode + " unavailable");
+        const session = await navigator.xr.requestSession(mode,{requiredFeatures:["webgpu","layers","local",...(warp?["space-warp"]:[])],optionalFeatures:[unknown]});
         if (session.enabledFeatures.includes(unknown)) throw Error("An unavailable optional feature was granted");
         const binding = new XRGPUBinding(session,device);
         const base = binding.createProjectionLayer({colorFormat:binding.getPreferredColorFormat()});
@@ -120,6 +124,26 @@ async function prepareLauncher() {
             const index=(page-3)%26, foveation=page>=29?1:null;
             try {
                 console.info("XR check begin", page);
+                if (page === 119) {
+                    if (session.environmentBlendMode !== "alpha-blend" || session.interactionMode !== "world-space")
+                        throw Error("Incorrect AR headset blend or interaction mode");
+                    await bounded(new Promise((ok, fail) => {
+                        let first, frames = 0;
+                        function tick(t, frame) {
+                            try {
+                                if (frame.getViewerPose(space)?.views.length === 2) {
+                                    clearForeground(frame, base, true);
+                                    first ??= t;
+                                    if (++frames > 1 && t - first >= 20000) { ok(frames); return; }
+                                }
+                                session.requestAnimationFrame(tick);
+                            } catch (e) { fail(e); }
+                        }
+                        session.requestAnimationFrame(tick);
+                    }), 30000, "No 20-second tracked AR marker window");
+                    console.info("XR passthrough foreground submitted");
+                    continue;
+                }
                 const checkAlpha = async () => {
                     if(base.blendTextureSourceAlpha !== true) throw Error("Projection alpha blending must default to true");
                     try {
