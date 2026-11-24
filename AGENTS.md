@@ -1,5 +1,7 @@
 # Quest WebXR qualification
 
+For local changes alongside a CI-signed install, add `-PsideBySideQualification` to the qualification build. Launch `com.rebeckerspecialties.xrsamples.localcheck/com.rebeckerspecialties.xrsamples.SampleActivity`; end one session before starting the other.
+
 Build the ARM64 qualification APK using the committed submodules, not a system BabylonNative checkout. See [the build workflow](.github/workflows/android-apk.yml) and [runtime handoff](third_party/BabylonNative/Documentation/QuestRuntimeHandoff.md). Keep hosted simulator screenshots off. Use ordinary device logging; separately check Home, tracking and physical passthrough after exit.
 
 - **Pixels:** `python android/test-layers.py --capture OUT SERIAL 118 25 26 27 28 105 106 107 108` (OpenCV). Require the two projection eyes, color/depth silhouettes, stereo film markers and transparent/opaque foreground controls. Cases 109/110 exercise silent 24 fps film; 10/11 exercise the original 30 fps film. FFmpeg reference pixels, display capture and headset inspection answer different questions.

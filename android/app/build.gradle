@@ -57,6 +57,7 @@ android {
             initWith release
             matchingFallbacks = ['release']
             signingConfig signingConfigs.debug
+            if (providers.gradleProperty('sideBySideQualification').isPresent()) applicationIdSuffix '.localcheck'
         }
     }
     androidResources { noCompress += ['webm'] }
