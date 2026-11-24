@@ -1,5 +1,13 @@
 import {trackHeadSweep} from "./headMotion.mjs";
 import {referenceRGB} from "./videoReference.mjs";
+import {XRFrameRate} from "./frameRate.mjs";
+
+// WebXR composites back to front. Preserve the order of existing overlays and underlays.
+export function insertBackgrounds(original, projection, backgrounds) {
+    const i = original.indexOf(projection);
+    if (i < 0) throw Error("Missing foreground projection");
+    return [...original.slice(0,i), ...backgrounds, ...original.slice(i)];
+}
 
 export function uploadPackedVideo(queue,video,left,right) {
     const a=left.viewport, b=right.viewport;
@@ -119,7 +127,7 @@ async function inspectRect(device,sub) {
         finally {read.unmap();}
     } finally {read.destroy();}
 }
-export async function exerciseLayer(entry, session, device, space, baseURL, foveation, moving = false, duration=8000, identifyEyes=false) {
+export async function exerciseLayer(entry, session, device, space, baseURL, foveation, moving = false, duration=8000, identifyEyes=false, drawForeground) {
     const [title,kinds,operation] = entry;
     const original = Array.from(session.renderState.layers);
     const projection = original.find(layer => layer instanceof XRProjectionLayer);
@@ -164,9 +172,10 @@ export async function exerciseLayer(entry, session, device, space, baseURL, fove
             owned.push({layer,image,width,height,kind});
         }
         const layers = owned.map(x=>x.layer);
-        let requested = [...original,...layers];
+        let requested = insertBackgrounds(original,projection,layers);
         session.updateRenderState({layers:requested}); changed = true;
         let firstTime, videoTime, count = 0;
+        const cadence = new XRFrameRate();
         let selected = false, pendingSelection;
         if (operation === "select") {
             // Two adjacent, world-fixed half-metre panels. Input is the event's aim, never the grip.
@@ -196,6 +205,8 @@ export async function exerciseLayer(entry, session, device, space, baseURL, fove
                     if (!requested.every((l,i)=>session.renderState.layers[i]===l) || session.renderState.layers.length!==requested.length)
                         throw Error("Wrong ordered layers at next frame");
                     firstTime ??= performance.now();
+                    cadence.sample(time);
+                    if (drawForeground) drawForeground(xr,projection);
                     if (sweep) sweep.observe(xr.getViewerPose(space));
                     if (useVideo) videoTime ??= video.currentTime;
                     for (const item of owned) {
@@ -234,11 +245,11 @@ export async function exerciseLayer(entry, session, device, space, baseURL, fove
                         finally { validation.push(device.popErrorScope()); }
                         item.uploaded = true;
                     }
-                    count++;
+                    if (++count === 1) console.info("XR displaying layer",title);
                     // Select events may run before rAF in the same XR frame. Only
                     // compare active renderState on the frame after we queue its update.
                     if (pendingSelection) {
-                        requested = [...original,pendingSelection];
+                        requested = insertBackgrounds(original,projection,[pendingSelection]);
                         pendingSelection = undefined;
                         session.updateRenderState({layers:requested});
                         selected = true;
@@ -266,7 +277,7 @@ export async function exerciseLayer(entry, session, device, space, baseURL, fove
         const stereoReference=await Promise.all(videoSamples);
         if(inspectError) throw inspectError;
         if(operation==="textureVideo" && stereoReference.length!==2) throw Error("Missing timed stereo video references");
-        return {title,frames:count,foveation,mediaSeconds:video?.currentTime,headSweep:sweep?.result(),stereoReference,verifiedLayerImages:inspections.length};
+        return {title,frames:count,fps:cadence.average,foveation,mediaSeconds:video?.currentTime,headSweep:sweep?.result(),stereoReference,verifiedLayerImages:inspections.length};
     } finally {
         active = false;
         if (select) session.removeEventListener("select",select);

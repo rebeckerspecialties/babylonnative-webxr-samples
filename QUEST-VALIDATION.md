@@ -96,3 +96,27 @@ nonfixed reference spaces ([75e1aa4896](https://github.com/WebKit/WebKit/commit/
 and hit testing in the requested space ([adad6bed1f](https://github.com/WebKit/WebKit/commit/adad6bed1f)).
 The NativeXR regression distinguishes an offset viewer from an offset local
 space under both translation and rotation.
+
+## Controller composition and XR cadence
+
+On Quest 1/Vulkan, cases 107 and 108 use the same equirect underlay and draw
+opaque, eye-specific marks in the foreground projection. They check the actual
+two-eye display. With source alpha enabled, 65.6% / 73.2% of the non-marker
+region was lit (left/right); disabled, only 0.2% / 0.1% was lit. Both captures
+contained their respective red and blue markers. A display capture belonging to
+another app failed this check even though the layer submission log passed.
+
+The interactive controller scene and its FPS HUD share the foreground projection.
+Sixteen-second interactive runs (app frames, not panel refresh): equirect image
+67.6 FPS; stereo video copied into an equirect texture 35.1 FPS; direct media
+equirect 68.9 FPS. The direct-media and texture-video results are different
+paths and should not be averaged. Use `--reference-grip` with
+`android/capture-interactive-layer.py` to render the real controller glTF at a
+fixed test pose without requiring someone to wear the headset.
+
+Device captures: [live Touch controller over the panorama](evidence/quest-tracked-grip-panorama.jpg)
+and [fixed-pose grip glTF over decoded stereo video](evidence/quest-reference-grip-stereo-video.jpg).
+The panorama run with the live controller averaged 62.9 FPS. Texture-video
+repeats ranged from 29.8 to 39.3 FPS; the one-second HUD will differ from the
+whole-run mean. In the fixed-pose run, both decoded eyes were within 0.30/255
+mean absolute RGB error of the independent film reference at 12.5 and 13.5 s.

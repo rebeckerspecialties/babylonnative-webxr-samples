@@ -11,6 +11,7 @@ def buildMenu = tasks.register('buildPublicMenu', Exec) {
     inputs.files(new File(source, 'launcher.ts'), new File(source, 'launcher.html'), new File(source, 'publicMenu.ts'), new File(source, 'package-lock.json'), new File(source, 'buildLauncher.cjs'))
     inputs.file(new File(source, 'spatial.ts'))
     inputs.file(new File(source, 'videoReference.mjs'))
+    inputs.files(new File(source, 'frameRate.mjs'), new File(source, 'frameRateHud.ts'))
     inputs.file(new File(source, 'benchmarkPlugin.cjs'))
     inputs.file(new File(upstream, 'webgpu/input-selection-benchmark.html'))
     inputs.dir(new File(upstream, 'js/render'))

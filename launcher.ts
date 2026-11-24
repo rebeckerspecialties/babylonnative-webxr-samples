@@ -1,5 +1,6 @@
 import { showMenu } from "sample-menu";
 import { attachGripModel } from "./gripModel.mjs";
+import { attachFrameRateHud } from "./frameRateHud";
 import { bounded, exerciseLayer, inspectionSpace, layerCases } from "./composition.mjs";
 import { projectionPixels } from "./projectionPixels.mjs";
 import { warpFrames } from "./spaceWarp.mjs";
@@ -8,6 +9,7 @@ import { spatialCases, spatialSample } from "./spatial";
 import { WebGPUEngine } from "@babylonjs/core/Engines/webgpuEngine";
 import { Scene } from "@babylonjs/core/scene";
 import { FreeCamera } from "@babylonjs/core/Cameras/freeCamera";
+import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
 import { ImportMeshAsync } from "@babylonjs/core/Loading/sceneLoader";
@@ -46,15 +48,60 @@ async function prepareLauncher() {
         const base = binding.createProjectionLayer({colorFormat:binding.getPreferredColorFormat()});
         session.updateRenderState({layers:[base]});
         const space = await session.requestReferenceSpace("local");
+        // These checks run without Babylon or input models. Explicitly render both
+        // transparent projection slices; untouched swapchain pixels are not a background.
+        let markerPipeline;
+        const mark = (pass,sub,eye) => {
+            if (!markerPipeline) {
+                const module = device.createShaderModule({code:`
+                    struct V { @builtin(position) p: vec4f, @location(0) rgb: vec3f }
+                    @vertex fn vs(@builtin(vertex_index) i:u32, @builtin(instance_index) eye:u32)->V {
+                        let pos=array(vec2f(-1,-1),vec2f(3,-1),vec2f(-1,3));
+                        return V(vec4f(pos[i],0,1),select(vec3f(1,0,0),vec3f(0,0,1),eye==1u));
+                    }
+                    @fragment fn fs(v:V)->@location(0) vec4f {return vec4f(v.rgb,1);}
+                `});
+                markerPipeline=device.createRenderPipeline({layout:"auto",vertex:{module,entryPoint:"vs"},
+                    fragment:{module,entryPoint:"fs",targets:[{format:sub.colorTexture.format}]}});
+            }
+            const v=sub.viewport;
+            pass.setScissorRect(v.x+(v.width*0.41|0),v.y+(v.height*0.41|0),v.width*0.18|0,v.height*0.18|0);
+            pass.setPipeline(markerPipeline);
+            pass.draw(3,1,0,eye==="right"?1:0);
+        };
+        const clearForeground = (frame, layer, marker=false) => {
+            const pose = frame.getViewerPose(space);
+            if (!pose) return;
+            const encoder = device.createCommandEncoder();
+            for (const view of pose.views) {
+                const sub = binding.getViewSubImage(layer,view);
+                const pass=encoder.beginRenderPass({colorAttachments:[{
+                    view:sub.colorTexture.createView(sub.getViewDescriptor()),
+                    loadOp:"clear", storeOp:"store", clearValue:[0,0,0,0]
+                }]});
+                if(marker) mark(pass,sub,view.eye);
+                pass.end();
+            }
+            device.queue.submit([encoder.finish()]);
+        };
         await new Promise(resolve=>session.requestAnimationFrame(resolve));
         for(const page of globalThis.webxrLayerChecks) {
             const index=(page-3)%26, foveation=page>=29?1:null;
             try {
                 console.info("XR check begin", page);
-                const result=page===105 || page===106 ? await exerciseLayer(layerCases.find(c=>c[2]==="textureVideo"),session,device,
-                    await inspectionSpace(session,space),"app:///Scripts/layer-images/",page===106?1:null,false,15000,true) :
+                const checkAlpha = async () => {
+                    if(base.blendTextureSourceAlpha !== true) throw Error("Projection alpha blending must default to true");
+                    try {
+                        base.blendTextureSourceAlpha = page===107;
+                        if(base.blendTextureSourceAlpha !== (page===107)) throw Error("Projection alpha setter ignored");
+                        return await exerciseLayer(layerCases[2],session,device,await inspectionSpace(session,space),
+                            "app:///Scripts/layer-images/",null,false,8000,false,(f,p)=>clearForeground(f,p,true));
+                    } finally {base.blendTextureSourceAlpha=true;}
+                };
+                const result=page===107 || page===108 ? await checkAlpha() : page===105 || page===106 ? await exerciseLayer(layerCases.find(c=>c[2]==="textureVideo"),session,device,
+                    await inspectionSpace(session,space),"app:///Scripts/layer-images/",page===106?1:null,false,15000,true,clearForeground) :
                     page===101 ? await densityPixels(session,device,space) : page>=100 ? await warpFrames(session,device,space,["Quad","Cylinder","Equirect"][page-102]) : index<22 ? await exerciseLayer(layerCases[index%11],session,device,await inspectionSpace(session,space),
-                    "app:///Scripts/layer-images/",foveation,index>=11) :
+                    "app:///Scripts/layer-images/",foveation,index>=11,8000,false,clearForeground) :
                     await projectionPixels(session,device,space,index>=24,index%2!==0,foveation);
                 console.info("XR layer submitted", JSON.stringify(result));
             } catch(e) {console.error("XR layer FAIL",page,e.message);}
@@ -67,6 +114,7 @@ async function prepareLauncher() {
     const engine = new WebGPUEngine(document.getElementById("webgpu_canvas"), { xrCompatible: true, audioEngine: false });
     await engine.initAsync();
     const scene = new Scene(engine);
+    scene.clearColor.set(0,0,0,0);
     // Controller glTF assets and WebXR grip/target-ray poses use the same right-handed basis.
     scene.useRightHandedSystem = true;
     new HemisphericLight("controller light", Vector3.Up(), scene);
@@ -76,6 +124,7 @@ async function prepareLauncher() {
         inputOptions: { doNotLoadControllerMeshes: true, disableOnlineControllerRepository: true },
     });
     xr.baseExperience.featuresManager.enableFeature("xr-layers", "latest");
+    attachFrameRateHud(scene,xr);
     async function loadGrip(handedness: string) {
         const name = handedness === "left" ? "controller-left.gltf" : "controller.gltf";
         const result = await ImportMeshAsync((native ? "app:///Scripts/controller/" : "./controller/") + name, scene, { meshNames: "mesh340565441" });
@@ -147,7 +196,7 @@ async function prepareLauncher() {
                         result = await exerciseLayer(v.entry,manager.session,engine._device,space,
                             native ? "app:///Scripts/layer-images/" : "./layer-images/", v.foveation, v.moving,16000);
                     }
-                    status = result.verifiedLayerImages ? "Layer image pixels verified" : "Submitted: " + result.frames + " frames";
+                    status = result.verifiedLayerImages ? "Layer image pixels verified" : "Submitted: " + result.frames + " frames (" + result.fps.toFixed(1) + " FPS)";
                     console.info("XR layer submitted",JSON.stringify(result));
                 } catch (e) {
                     status = e.message;
@@ -178,14 +227,25 @@ async function prepareLauncher() {
         if (globalThis.webxrInspectImage === true) {
             globalThis.webxrInspectImage=false;
             const manager=xr.baseExperience.sessionManager;
+            // Device pixel fixture only: exercise the real grip glTF/material with
+            // a repeatable pose, independently of whether a controller is awake.
+            let referenceGrip;
+            if (globalThis.webxrReferenceGrip === true) {
+                const meshes=await loadGrip("right");
+                referenceGrip=new TransformNode("Qualification grip pose",scene);
+                referenceGrip.parent=xr.baseExperience.camera;
+                referenceGrip.position.set(0,0,-0.45);
+                for (const mesh of meshes.filter(mesh=>!mesh.parent)) mesh.parent=referenceGrip;
+                for (const mesh of meshes) mesh.isPickable=false;
+            }
             await bounded(new Promise(resolve=>{
                 const ob=manager.onXRFrameObservable.add(frame=>{
                     if(!frame.getViewerPose(manager.referenceSpace)) return;
                     manager.onXRFrameObservable.remove(ob); resolve(true);
                 });
             }),5000,"No tracked menu frame");
-            await run();
-            if (status !== "Layer image pixels verified") throw Error("Menu image inspection failed: "+status);
+            try {await run();} finally {referenceGrip?.dispose(false,true);}
+            if (status !== "Layer image pixels verified" && !status.startsWith("Submitted:")) throw Error("Menu layer inspection failed: "+status);
             console.info("XR image inspection returned", titles[page]);
         }
         if (globalThis.webxrProjectionRoundTrip === true) {

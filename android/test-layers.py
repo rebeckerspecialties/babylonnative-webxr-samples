@@ -3,6 +3,7 @@ import argparse
 import json
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import time
 
@@ -48,6 +49,8 @@ if __name__ == "__main__":
     p.add_argument("--capture", type=Path, help="Save a display capture during each case, after the sky-only video intro")
     p.add_argument("checks", nargs="*", type=int, default=[3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 25, 26, 27, 28])
     args = p.parse_args()
+    if not args.capture and any(case in (107, 108) for case in args.checks):
+        p.error("Foreground tests require --capture and a Python interpreter with OpenCV")
     adb = ["adb", "-s", args.serial]
     package = "com.rebeckerspecialties.xrsamples"
     def pidof():
@@ -55,6 +58,7 @@ if __name__ == "__main__":
     pid = None
     seen = 0
     capture_at = None
+    verified_foregrounds = []
     if args.capture:
         args.capture.mkdir(exist_ok=True, parents=True)
     with tempfile.NamedTemporaryFile() as out:
@@ -67,6 +71,8 @@ if __name__ == "__main__":
                 with open(out.name, encoding="utf-8", errors="replace") as log:
                     lines = log.read()
                     if verify(lines, pid, args.checks):
+                        if verified_foregrounds != [n for n in args.checks if n in (107, 108)]:
+                            raise RuntimeError("Missing composited foreground capture")
                         print("PASS", args.checks)
                         break
                     if args.capture:
@@ -78,6 +84,11 @@ if __name__ == "__main__":
                             path = args.capture / f"{seen:02d}-case-{args.checks[seen-1]}.png"
                             with path.open("wb") as image:
                                 subprocess.run(adb + ["exec-out", "screencap", "-p"], stdout=image, check=True, timeout=10)
+                            case = args.checks[seen-1]
+                            if case in (107, 108):
+                                subprocess.run([sys.executable, str(Path(__file__).with_name("check-foreground-display.py")),
+                                                "transparent" if case == 107 else "opaque", str(path)], check=True)
+                                verified_foregrounds.append(case)
                             capture_at = None
                 if not pid or pidof() != pid:
                     raise RuntimeError("Sample exited without all requested results")

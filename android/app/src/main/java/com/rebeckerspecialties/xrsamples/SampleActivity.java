@@ -28,7 +28,7 @@ public final class SampleActivity extends Activity {
         int[] cases = getIntent().getIntArrayExtra("layerChecks");
         if (cases != null && menu) {
             for (int index : cases)
-                if ((index < 3 || index >= 55) && (index < 100 || index > 106)) throw new IllegalArgumentException("Invalid compositor check: " + index);
+                if ((index < 3 || index >= 55) && (index < 100 || index > 108)) throw new IllegalArgumentException("Invalid compositor check: " + index);
             BabylonNative.runtimeEval(runtime, "globalThis.webxrLayerChecks=" + java.util.Arrays.toString(cases),
                     "app:///Scripts/layer-check-options.js");
         }
@@ -40,8 +40,9 @@ public final class SampleActivity extends Activity {
                     "app:///Scripts/projection-roundtrip.js");
         }
         int inspect = getIntent().getIntExtra("inspectImage", -1);
-        if (menu && (inspect == 3 || inspect == 4)) {
-            BabylonNative.runtimeEval(runtime, "globalThis.webxrInspectImage=true;globalThis.webxrSamplePage=" + inspect,
+        if (menu && (inspect >= 3 && inspect <= 6 || inspect >= 10 && inspect <= 13)) {
+            BabylonNative.runtimeEval(runtime, "globalThis.webxrInspectImage=true;globalThis.webxrReferenceGrip=" +
+                    getIntent().getBooleanExtra("referenceGrip", false) + ";globalThis.webxrSamplePage=" + inspect,
                     "app:///Scripts/inspect-image.js");
         }
         BabylonNative.runtimeLoadScript(runtime, "app:///Scripts/main.js");

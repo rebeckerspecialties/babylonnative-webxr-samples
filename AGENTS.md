@@ -9,3 +9,5 @@ Start with the [shared Quest handoff](https://github.com/rebeckerspecialties/Bab
 
 - Implementation: Keep hosted APK asset checks, independent FFmpeg oracle and swapped-eye controls; investigate the Home passthrough relapse independently of successful layer output.
 - Device: Install the clean artifact; verify cube floor/ceiling, movie and eye markers, normal exit and Home passthrough before the next case.
+- For controller occlusion, use `python android/test-layers.py --capture OUT SERIAL 107 108` with OpenCV. Both captures must have opposite opaque foreground markers; only 107 may show the panorama. Stop other test apps first. For the actual interactive sample, `python3 android/capture-interactive-layer.py SERIAL 5 panorama.png` (10 for texture video) captures while the background and controller projection coexist, not after returning to the menu.
+- FPS is application XR animation-frame cadence in both eyes, not panel refresh, decoder throughput or synthesized frames. The time window spans at least one second. Never derive FPS from the number of submitted layers or eyes.
