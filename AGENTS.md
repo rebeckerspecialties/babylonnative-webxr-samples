@@ -26,3 +26,16 @@ Quest 1, 2026-11-23, one 45 s interval per case, no timing probes:
 These are raw projection + movie cases, not interactive menu performance. The
 separate 16 s texture movie with Babylon foreground/HUD and a display capture
 measured 56.50 at 60 Hz. Zero-app-upload direct media still missed intervals.
+In the retained steady VrApi seconds, median app GPU time was 2.02/1.19 ms
+(texture/direct at 72 Hz) and 2.30/1.09 ms (60 Hz). These are compositor
+reports, not shader counters. A separate no-movie menu control on the same
+headset showed 14 minor V8 collections of 24-39 ms over the sampled steady
+interval (median separation 5.5 s). Do not infer that every missed display
+was GC or that changing the GC interval fixes the source of allocations.
+
+For a GPU-only texture copy, the physical Adreno 540 reports Android hardware
+buffer import, sampler YCbCr conversion (feature bit 1), foreign queue family,
+and external semaphore FD support via `adb shell cmd gpu vkjson`. Still needed:
+verify the actual decoder buffer's import format and acquire/release fences,
+GPU-convert to the requested WebGPU destination, and hold the decoded frame
+until its last GPU use. Keep the CPU-readable fallback and both-eye oracle.
