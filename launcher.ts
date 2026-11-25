@@ -344,6 +344,8 @@ async function prepareLauncher() {
             const manager = xr.baseExperience.sessionManager;
             const session = manager.session;
             const rate = new XRFrameRate(72);
+            const lateAt = new Float64Array(32);
+            let lateCount = 0;
             if (!menu.isPlaced || session.frameRate !== rate.displayHz) throw Error("First-menu check requires the public menu at 72 Hz");
             const observer = manager.onXRFrameObservable.add(() => {
                 if (rate.first === undefined && (session.visibilityState !== "visible" || !menu.isPlaced())) return;
@@ -353,12 +355,17 @@ async function prepareLauncher() {
                     return;
                 }
                 if (rate.first === undefined) console.info("XR displaying first menu");
+                const before = rate.missed;
                 rate.sample(manager.currentTimestamp);
+                if (rate.missed > before && lateCount < lateAt.length) {
+                    lateAt[lateCount++] = rate.steadyMs;
+                }
                 // Include complete compositor bins at both ends of a 30-second window.
-                if (rate.steadyMs >= 32000) {
+                if (rate.steadyMs >= 33000) {
                     manager.onXRFrameObservable.remove(observer);
                     console.info("XR first menu pacing", JSON.stringify({displayHz:rate.displayHz, steadyMs:rate.steadyMs,
-                        steadyIntervals:rate.steadyIntervals, missedRefreshes:rate.missed, maxGapMs:rate.maxGapMs}));
+                        steadyIntervals:rate.steadyIntervals, missedRefreshes:rate.missed, maxGapMs:rate.maxGapMs,
+                        lateAtSteadyMs:Array.from(lateAt.subarray(0,lateCount))}));
                 }
             });
         }

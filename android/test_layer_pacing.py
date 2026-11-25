@@ -46,3 +46,11 @@ class CompositorPacing(unittest.TestCase):
                     self.log(wrong_rate=10), self.log().split("\n", 1)[1], ""):
             with self.subTest(log=log[:100]), self.assertRaises(RuntimeError):
                 require_compositor_pacing(log, 17, self.record, 60)
+
+    def test_first_menu_covers_thirty_seconds_for_every_bin_phase(self):
+        for phase in (0.02, 0.40, 0.98):
+            lines = ["11-24 10:00:00.000 17 22 I BabylonNative: XR displaying first menu"]
+            lines.extend(f"11-24 10:00:{i+phase:06.3f} 17 91 I VrApi   : FPS=72/72,Stale=0,TW=3ms" for i in range(36))
+            with self.subTest(phase=phase):
+                self.assertGreaterEqual(require_compositor_pacing("\n".join(lines), 17, {"steadyMs": 33000}, 72,
+                    marker="XR displaying first menu", seconds=30), 31)
