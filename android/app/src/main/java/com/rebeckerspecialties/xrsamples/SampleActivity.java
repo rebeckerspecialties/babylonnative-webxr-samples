@@ -21,6 +21,8 @@ public final class SampleActivity extends Activity {
         }
         boolean menu = getIntent().getBooleanExtra("launcher", true);
         if (menu) BabylonNative.runtimeLoadScript(runtime, "app:///Scripts/menu-entry.js");
+        if (menu && getIntent().getBooleanExtra("noMirrorParentClear", false))
+            BabylonNative.runtimeEval(runtime, "globalThis.webxrNoMirrorParentClear=true", "app:///Scripts/no-mirror-control.js");
         if (menu && getIntent().getBooleanExtra("firstMenuPacing", false))
             BabylonNative.runtimeEval(runtime, "globalThis.webxrCheckFirstMenu=true", "app:///Scripts/first-menu-pacing.js");
         if (menu && getIntent().getBooleanExtra("hoverSweep", false))

@@ -247,6 +247,8 @@ async function prepareLauncher() {
     for (const c of xr.input.controllers) attachController(c).catch(report);
     const start = async () => {
         await xr.baseExperience.enterXRAsync("immersive-vr", "local", xr.renderTarget, { requiredFeatures: ["webgpu","layers"] });
+        // The native selector has no spectator canvas. The scene still clears each drawable eye.
+        xr.baseExperience.camera.skipUnusedParentFramebufferClear = native && globalThis.webxrNoMirrorParentClear === true;
         if (globalThis.webxrHoverSweep === true) {
             const session = xr.baseExperience.sessionManager.session;
             await requestFilmRate(session, 72);
