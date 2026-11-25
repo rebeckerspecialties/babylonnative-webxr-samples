@@ -1,5 +1,8 @@
 from datetime import datetime, timedelta
 import unittest
+from runpy import run_path
+from pathlib import Path
+import json
 
 from layer_pacing import require_compositor_pacing, require_pacing
 
@@ -23,6 +26,20 @@ class CompositorPacing(unittest.TestCase):
         require_pacing(self.record, 60)
         with self.assertRaisesRegex(RuntimeError, "1 stale"):
             require_compositor_pacing(self.log(stale=12), 17, self.record, 60)
+
+    def test_first_menu_requires_both_clocks_over_thirty_seconds(self):
+        check_menu = run_path(str(Path(__file__).with_name("check-first-menu.py")))["check"]
+        record = dict(steadyMs=32000, displayHz=72, missedRefreshes=0, steadyIntervals=2304)
+        start = "11-24 10:00:00.000 17 22 I BabylonNative: XR displaying first menu"
+        bins = [f"11-24 10:00:{i:02}.400 17 91 I VrApi   : FPS=72/72,Stale=0,TW=3ms" for i in range(35)]
+        def log(reports=bins, **changes):
+            return "\n".join([start, *reports, "11-24 10:00:34.100 17 22 I BabylonNative: XR first menu pacing " + json.dumps(record | changes)])
+        self.assertEqual(check_menu(log(), 17), record)
+        for text in [log(missedRefreshes=1), log(bins[:25]), log(steadyMs=30000),
+                     log([line.replace("Stale=0", "Stale=1") if i == 32 else line for i, line in enumerate(bins)]),
+                     log().replace("XR displaying first menu", "XR launcher ready")]:
+            with self.assertRaises(ValueError):
+                check_menu(text, 17)
 
     def test_incomplete_wrong_pid_wrong_rate_and_missing_marker(self):
         for log in (self.log(omit=(10,)), self.log(omit=range(10, 26)), self.log(pid=19),

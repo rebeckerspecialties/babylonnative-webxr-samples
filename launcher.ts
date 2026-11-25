@@ -2,6 +2,7 @@ import { showMenu } from "sample-menu";
 import { attachGripModel } from "./gripModel.mjs";
 import { registerLauncherInputProfiles } from "./launcherInputProfiles.mjs";
 import { attachFrameRateHud } from "./frameRateHud";
+import { XRFrameRate } from "./frameRate.mjs";
 import { bounded, exerciseLayer, inspectionSpace, layerCases, requestFilmRate, stereoImageCases } from "./composition.mjs";
 import { projectionPixels } from "./projectionPixels.mjs";
 import { warpFrames } from "./spaceWarp.mjs";
@@ -339,6 +340,28 @@ async function prepareLauncher() {
         };
         const menu = showMenu(scene, xr, () => (page + 1) + " / " + titles.length + "   " + titles[page]+(status ? "\n"+status : ""), () => run().catch(report), next);
         console.info("XR launcher ready", titles[page]);
+        if (globalThis.webxrCheckFirstMenu === true) {
+            const manager = xr.baseExperience.sessionManager;
+            const session = manager.session;
+            const rate = new XRFrameRate(72);
+            if (!menu.isPlaced || session.frameRate !== rate.displayHz) throw Error("First-menu check requires the public menu at 72 Hz");
+            const observer = manager.onXRFrameObservable.add(() => {
+                if (rate.first === undefined && (session.visibilityState !== "visible" || !menu.isPlaced())) return;
+                if (session.visibilityState !== "visible" || !menu.isPlaced() || busy || session.frameRate !== rate.displayHz) {
+                    manager.onXRFrameObservable.remove(observer);
+                    console.error("XR first menu interrupted");
+                    return;
+                }
+                if (rate.first === undefined) console.info("XR displaying first menu");
+                rate.sample(manager.currentTimestamp);
+                // Include complete compositor bins at both ends of a 30-second window.
+                if (rate.steadyMs >= 32000) {
+                    manager.onXRFrameObservable.remove(observer);
+                    console.info("XR first menu pacing", JSON.stringify({displayHz:rate.displayHz, steadyMs:rate.steadyMs,
+                        steadyIntervals:rate.steadyIntervals, missedRefreshes:rate.missed, maxGapMs:rate.maxGapMs}));
+                }
+            });
+        }
         if (globalThis.webxrInspectImage === true) {
             globalThis.webxrInspectImage=false;
             console.info("XR inspection command recorder",!!engine.renderPassCommandRecorderProvider);

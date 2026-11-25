@@ -10,7 +10,7 @@ def require_pacing(record, target):
         raise RuntimeError(f"Pacing gate failed: expected {target} Hz, got {record}")
 
 
-def require_compositor_pacing(log, pid, record, target):
+def require_compositor_pacing(log, pid, record, target, *, marker="XR displaying layer ", seconds=20):
     """Check complete one-second VrApi windows strictly inside the steady interval."""
     first = None
     reports = []
@@ -23,7 +23,7 @@ def require_compositor_pacing(log, pid, record, target):
             continue
         hour, minute, second = fields[1].split(":")
         now = int(hour) * 3600 + int(minute) * 60 + float(second)
-        if tag == "BabylonNative" and message.startswith("XR displaying layer "):
+        if tag == "BabylonNative" and message.startswith(marker):
             if first is not None:
                 raise RuntimeError("Expected one layer exposure per compositor run")
             first = now
@@ -37,7 +37,7 @@ def require_compositor_pacing(log, pid, record, target):
         if match:
             reports.append((elapsed, int(match[1]), int(match[2])))
     gaps = [b[0] - a[0] for a, b in zip(reports, reports[1:])]
-    if (len(reports) < 21 or reports[-1][0] - reports[0][0] < 19.9
+    if (len(reports) < seconds + 1 or reports[-1][0] - reports[0][0] < seconds - 0.1
             or any(not 0.65 <= gap <= 1.35 for gap in gaps)):
         raise RuntimeError(f"Incomplete compositor timing coverage: {len(reports)} middle windows for PID {pid}")
     stale = sum(stale for _, _, stale in reports)

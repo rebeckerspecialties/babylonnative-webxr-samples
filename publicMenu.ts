@@ -109,7 +109,8 @@ export function showMenu(scene, xr, current, run, next) {
             if (pick?.hit) {hits++; scene.simulatePointerMove(pick,{pointerId:9876,pointerType:"xr"});}
         });
     }
-    return { setVisible: value => { visible=value; panel.setEnabled(visible && !!anchor); },
+    return { isPlaced: () => !!anchor && panel.isEnabled() && buttons[0].b._currentMeasure.width > 0,
+        setVisible: value => { visible=value; panel.setEnabled(visible && !!anchor); },
         refresh: () => { title.text = current(); }, dispose: () => {
         manager.onXRFrameObservable.remove(poseObserver);
         if (sweep) manager.onXRFrameObservable.remove(sweep);

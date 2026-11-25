@@ -1,6 +1,8 @@
 # Quest WebXR qualification
 
-For local changes alongside a CI-signed install, add `-PsideBySideQualification` to the qualification build. Launch `com.rebeckerspecialties.xrsamples.localcheck/com.rebeckerspecialties.xrsamples.SampleActivity`; end one session before starting the other.
+Keep one Samples installation (normally `com.rebeckerspecialties.xrsamples`). Use the hosted APK for acceptance and record its run URL and SHA-256. On signing mismatch confirm replacement before clearing test data; do not create another package to avoid the prompt. Remove temporary packages and extra APK copies after comparison.
+
+Time the first menu separately. Start with `adb shell am start -S -n com.rebeckerspecialties.xrsamples/.SampleActivity --ez firstMenuPacing true`, then capture threadtime logcat for that PID through `XR first menu pacing` and run `python3 android/check-first-menu.py RUN.log PID`. The HUD stays visible. The window starts at the placed menu, not Activity resume, session READY or bundle evaluation. Track startup to first stereo submission separately from the 30-second compositor gate.
 
 Build the ARM64 qualification APK using the committed submodules, not a system BabylonNative checkout. See [the build workflow](.github/workflows/android-apk.yml) and [runtime handoff](third_party/BabylonNative/Documentation/QuestRuntimeHandoff.md). Keep hosted simulator screenshots off. Use ordinary device logging; separately check Home, tracking and physical passthrough after exit.
 
