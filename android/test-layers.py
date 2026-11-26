@@ -8,6 +8,7 @@ import sys
 import tempfile
 import time
 from layer_pacing import require_pacing
+from device_isolation import require_no_gpu_cts
 
 
 def release_test_process(adb, package, launched_pid, pidof, run=subprocess.run):
@@ -86,6 +87,7 @@ if __name__ == "__main__":
         if args.pacing:
             p.error("measure pacing without display capture; run the pixel controls separately")
     with ExitStack() as stack:
+        require_no_gpu_cts(adb)
         out = stack.enter_context(args.log.open("xb") if args.log else tempfile.NamedTemporaryFile())
         reader = subprocess.Popen(adb + ["logcat", "-T", "1", "-v", "threadtime", "-s", "BabylonNative", "AndroidRuntime", "libc"], stdout=out)
         try:
@@ -103,6 +105,7 @@ if __name__ == "__main__":
                         started = len(starts)
                         deadline = time.monotonic() + 85
                     if verify(lines, pid, args.checks,args.pacing):
+                        require_no_gpu_cts(adb)
                         if verified_foregrounds != [n for n in args.checks if n in (107, 108)]:
                             raise RuntimeError("Missing composited foreground capture")
                         print("PASS", args.checks)

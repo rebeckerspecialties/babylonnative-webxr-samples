@@ -5,11 +5,13 @@ from pathlib import Path
 import subprocess
 import time
 from layer_pacing import require_compositor_pacing, require_pacing
+from device_isolation import require_no_gpu_cts
 
 
 def capture(serial, page, output, reference_grip, disable_recorder, pacing, film_fps, diagnose, vp9_profile, quest_pacing=False, log_path=None):
     adb = ["adb", "-s", serial]
     package = "com.rebeckerspecialties.xrsamples"
+    require_no_gpu_cts(adb)
     subprocess.run(adb + ["shell", "am", "start", "-S", "-W", "-n", package + "/.SampleActivity",
                           "--ei", "inspectImage", str(page), "--ez", "inspectGrip", str(output is not None).lower(),
                           "--ei", "inspectFilmFPS", str(film_fps),
@@ -52,6 +54,7 @@ def capture(serial, page, output, reference_grip, disable_recorder, pacing, film
             print(poses[-1] if poses else "No grip pose sample")
             captured = True
         if (captured or output is None) and "XR image inspection returned" in log:
+            require_no_gpu_cts(adb)
             print(next(line for line in log.splitlines() if "XR inspection command recorder" in line))
             line=next(line for line in log.splitlines() if "XR layer submitted " in line)
             print(line)
