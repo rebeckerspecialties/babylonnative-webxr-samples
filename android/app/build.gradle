@@ -7,10 +7,15 @@ def launcher = customMenu ? file(customMenu) : new File(source, 'build/launcher'
 def buildMenu = tasks.register('buildPublicMenu', Exec) {
     onlyIf { !customMenu }
     workingDir source
-    inputs.files(['composition.mjs','gripModel.mjs','headMotion.mjs','menuRay.mjs','projectionPixels.mjs'].collect { new File(source, it) })
+    inputs.files(['composition.mjs','gripModel.mjs','headMotion.mjs','launcherInputProfiles.mjs','menuRay.mjs','projectionPixels.mjs','spaceWarp.mjs','densityPixels.mjs'].collect { new File(source, it) })
     inputs.files(new File(source, 'launcher.ts'), new File(source, 'launcher.html'), new File(source, 'publicMenu.ts'), new File(source, 'package-lock.json'), new File(source, 'buildLauncher.cjs'))
     inputs.file(new File(source, 'spatial.ts'))
+    inputs.file(new File(source, 'videoReference.mjs'))
+    inputs.files(new File(source, 'frameRate.mjs'), new File(source, 'frameRateHud.ts'))
     inputs.file(new File(source, 'benchmarkPlugin.cjs'))
+    inputs.file(new File(source, 'noMirrorScene.cjs'))
+    inputs.file(new File(source, 'third_party/BabylonNative/Apps/scripts/questMenuLadder/parentBuild.cjs'))
+    inputs.file(new File(source, 'third_party/BabylonNative/Patches/BabylonJS/0010-no-mirror-parent-clear.patch'))
     inputs.file(new File(upstream, 'webgpu/input-selection-benchmark.html'))
     inputs.dir(new File(upstream, 'js/render'))
     outputs.file(new File(launcher, 'launcher.js'))
@@ -18,14 +23,16 @@ def buildMenu = tasks.register('buildPublicMenu', Exec) {
 }
 def host = new File(project(':BabylonNative').projectDir, '../../Scripts/babylon_lite_bootstrap.js')
 def generate = tasks.register('generateSample', Exec) {
+    inputs.file(new File(source, 'tools/PrepareCube.java'))
     inputs.files(new File(source, 'prepare.py'), new File(source, 'checks.js'), new File(source, 'projectionReplacement.js'), new File(source, 'trackedInput.js'), new File(source, 'flatControl.js'), new File(upstream, 'webgpu/vr-barebones.html'))
     inputs.files(new File(upstream, 'css/common.css'), new File(upstream, 'favicon-32x32.png'), new File(upstream, 'favicon-96x96.png'))
     inputs.dir(new File(upstream, 'media/gltf/controller'))
     inputs.dir(new File(upstream, 'media/video'))
+    inputs.dir(new File(source, 'qualification/films'))
     inputs.dir(new File(upstream, 'media/gltf/sunflower'))
     inputs.dir(new File(upstream, 'media/gltf/reticle'))
     inputs.dir(new File(upstream, 'media/gltf/cube-room'))
-    inputs.files(['rect-mono.png', 'mono_equirect_test.png', 'mono_cube_map.png'].collect { new File(upstream, 'media/textures/' + it) })
+    inputs.files(['rect-mono.png', 'mono_equirect_test.png', 'mono_cube_map.png', 'rect-stereo-top-down.png', 'chess-pano-4k.png', 'stereo_cube_map.png'].collect { new File(upstream, 'media/textures/' + it) })
     outputs.dir(layout.buildDirectory.dir('generated/entries'))
     commandLine 'python3', new File(source, 'prepare.py'), upstream, layout.buildDirectory.dir('generated/entries').get().asFile
 }
@@ -36,17 +43,26 @@ def stage = tasks.register('stageSample', Sync) {
         from(layout.buildDirectory.dir('generated/entries')) { include 'main.js', 'offset.js', 'menu-entry.js', 'menu-check.js' }
         from(new File(launcher, 'launcher.js'))
         from(host)
+        from(new File(host.parentFile, 'xr_projection_density_validation.js'))
         from(layout.buildDirectory.dir('generated/entries/controller')) { into 'controller' }
         from(layout.buildDirectory.dir('generated/entries/layer-images')) { into 'layer-images' }
         from(layout.buildDirectory.dir('generated/entries/spatial')) { into 'spatial' }
     }
     doLast {
-        for (name in ['launcher.js', 'main.js', 'babylon_lite_bootstrap.js']) {
+        for (name in ['launcher.js', 'main.js', 'babylon_lite_bootstrap.js', 'xr_projection_density_validation.js']) {
             if (!new File(destinationDir, "Scripts/$name").isFile()) throw new GradleException("Missing $name")
         }
     }
 }
 android {
+    buildTypes {
+        qualification {
+            initWith release
+            matchingFallbacks = ['release']
+            signingConfig signingConfigs.debug
+            if (providers.gradleProperty('sideBySideQualification').isPresent()) applicationIdSuffix '.localcheck'
+        }
+    }
     androidResources { noCompress += ['webm'] }
     namespace = 'com.rebeckerspecialties.xrsamples'
     compileSdk = 35

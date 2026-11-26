@@ -4,6 +4,7 @@ from hashlib import sha256
 from html.parser import HTMLParser
 from pathlib import Path
 from shutil import copyfile, copytree, ignore_patterns
+import subprocess
 
 
 class Module(HTMLParser):
@@ -52,10 +53,21 @@ def generate(checkout, output):
     (output / "layer-images").mkdir(exist_ok=True)
     for name in ("sunflower","reticle","cube-room"):
         copytree(checkout / "media/gltf" / name, output / "spatial" / name, dirs_exist_ok=True, ignore=ignore_patterns("*.blend"))
-    for image in ("rect-mono.png","mono_equirect_test.png","mono_cube_map.png"):
+    for image in ("rect-mono.png","mono_equirect_test.png","rect-stereo-top-down.png","chess-pano-4k.png"):
         copyfile(checkout / "media/textures" / image, output / "layer-images" / image)
+    for strip in ("mono_cube_map.png","stereo_cube_map.png"):
+        subprocess.run(["java", Path(__file__).parent / "tools/PrepareCube.java",
+                        checkout / "media/textures" / strip, output / "layer-images" / strip], check=True)
     for asset in ("bbb-sunflower-540p2-1min.webm","ATTRIBUTION.md"):
         copyfile(checkout / "media/video" / asset, output / "layer-images" / asset)
+    for asset in ("vp9-p0.webm", "vp9-p0-24.webm", "vp9-p2.webm"):
+        copyfile(Path(__file__).parent / "qualification/films" / asset, output / "layer-images" / asset)
+    # Same compressed VP8 frames at 24 rather than 30 fps. Keep attribution
+    # alongside both clips; omit audio rather than changing the audio clock.
+    subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-itsscale", "1.25",
+                    "-i", str(output / "layer-images/bbb-sunflower-540p2-1min.webm"),
+                    "-map", "0:v:0", "-c:v", "copy", "-r", "24", "-an", "-t", "22",
+                    str(output / "layer-images/bbb-stereo-24fps.webm")], check=True)
     for asset in ("controller.gltf", "controller-left.gltf", "controller.bin", "ATTRIBUTION.md"):
         copyfile(checkout / "media/gltf/controller" / asset, output / "controller" / asset)
     (pages / "vr-barebones.html").write_bytes(html)

@@ -41,7 +41,10 @@ export function silhouette(m,width,height) {
         throw Error("Stereo target edges outside the eye viewport");
     return {row,xs};
 }
+import {XRFrameRate} from "./frameRate.mjs";
+
 export async function projectionPixels(session, device, space, singlePass, withDepth, foveation) {
+    const cadence = new XRFrameRate();
     if (singlePass && !device._nativeFeatures?.has("xr-stereo-multiview")) throw Error("Single-pass multiview unavailable");
     const binding = new XRGPUBinding(session,device), format = binding.getPreferredColorFormat();
     const original = Array.from(session.renderState.layers ?? []);
@@ -89,6 +92,7 @@ struct V { @builtin(position) p:vec4f, @location(0) @interpolate(flat) eye:u32, 
                 try {
                     const pose = frame.getViewerPose(space);
                     if (!pose) { session.requestAnimationFrame(tick); return; }
+                    cadence.sample(timestamp);
                     if (pose.views.length !== 2 || session.renderState.layers[0] !== layer) throw Error("Stereo projection not active");
                     if (!model) {
                         model = new Float32Array(pose.transform.matrix);
@@ -143,7 +147,7 @@ struct V { @builtin(position) p:vec4f, @location(0) @interpolate(flat) eye:u32, 
                 throw Error("Stereo silhouette mismatch at eye "+i+" sample "+sample+": "+bytes.slice(j,j+4));
         }
         readback.unmap();
-        return {frames,format,singlePass,withDepth,foveation,eyeSeparationMeters:baseline};
+        return {frames,fps:cadence.average,format,singlePass,withDepth,foveation,eyeSeparationMeters:baseline};
     } finally {
         active = false;
         clearTimeout(timer);

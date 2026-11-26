@@ -6,6 +6,7 @@ import argparse
 import subprocess
 import tempfile
 import time
+from device_isolation import require_no_gpu_cts
 
 
 def verify(log):
@@ -33,6 +34,7 @@ def run(serial, count):
         return subprocess.run([*prefix, *args], text=True, capture_output=True, check=check, timeout=25).stdout.strip()
 
     def cold_start(attempt, capture):
+        require_no_gpu_cts(prefix)
         start = adb("shell", "am", "start", "-S", "-W", "-a", "android.intent.action.MAIN",
                     "-c", "android.intent.category.LAUNCHER", "-n", package + "/.SampleActivity",
                     "--ez", "checkHandoff", "true")
@@ -48,6 +50,7 @@ def run(serial, count):
             with open(capture, encoding="utf-8", errors="replace") as file:
                 log = "\n".join(line for line in file if line.split()[2:3] == [pid])
             if verify(log):
+                require_no_gpu_cts(prefix)
                 print(f"PASS {attempt + 1}/{count}: PID {pid}, selector, 32 stereo frames, selector", flush=True)
                 break
             time.sleep(0.5)
